@@ -26,7 +26,7 @@ end
 local function effects(rows, width, s)
   if type(rows) ~= 'table' or #rows == 0 then return end
   ui.Dummy(0, 8 * s)
-  colored('Buff effects', C.muted)
+  colored('Effects', C.muted)
   local ordered = {}
   for _, row in ipairs(rows) do ordered[#ordered + 1] = row end
   local priority = { Haste = 1, Strength = 2, ['Armor Class'] = 3, Attack = 4, Accuracy = 5, Strikethrough = 6 }
@@ -41,7 +41,7 @@ local function effects(rows, width, s)
   ui.Dummy(0, 5 * s)
   local nameW = 0
   for _, row in ipairs(ordered) do
-    if type(row.name) == 'string' and not row.raw and not row.is_raw then
+    if type(row.name) == 'string' and not row.is_raw then
       nameW = math.max(nameW, T.TextSize(row.name, T.font.small))
     end
   end
@@ -62,7 +62,7 @@ local function effects(rows, width, s)
     ui.Dummy(width, th + 4 * s)
   end
   for _, row in ipairs(ordered) do
-    if row.raw or row.is_raw then
+    if row.is_raw then
       colored(row.min or row.name or '', EXTRA_COLOR)
     else
       local x, y = ui.GetCursorScreenPos()

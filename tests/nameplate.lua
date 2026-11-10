@@ -59,7 +59,7 @@ end
 
 local Settings = require('settings')
 local stored = Settings.new({pickle = function() end}, function() return nil end)
-assert(stored.get('nameplate_level') == true and stored.get('item_info') == true,
+assert(stored.get('target_level') == true and stored.get('item_info') == true,
   'all supported features default to enabled')
 assert(stored.get('npc_class') == true)
 

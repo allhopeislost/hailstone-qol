@@ -11,13 +11,6 @@ local function number(value)
   return value
 end
 
-local function firstNumber(...)
-  for i = 1, select('#', ...) do
-    local value = number(select(i, ...))
-    if value ~= nil then return value end
-  end
-end
-
 local function integer(value)
   value = number(value)
   if value and value % 1 == 0 and value >= -2147483648 and value <= 2147483647 then return value end
@@ -34,14 +27,14 @@ local function spell_header_lines(s)
   append(lines, 'Mana: ', number(s.mana))
   append(lines, 'Endurance: ', number(s.endurance))
 
-  local cast = firstNumber(s.castTime, s.cast_time)
-  local recovery = firstNumber(s.recoveryTime, s.recovery_time)
-  local recast = firstNumber(s.recastTime, s.recast_time)
+  local cast = number(s.cast_time)
+  local recovery = number(s.recovery_time)
+  local recast = number(s.recast_time)
   if cast and cast >= 0 then lines[#lines + 1] = ('Cast: %.2fs'):format(cast / 1000) end
   if recovery and recovery >= 0 then lines[#lines + 1] = ('Recovery: %.2fs'):format(recovery / 1000) end
   if recast and recast >= 0 then lines[#lines + 1] = ('Recast: %.2fs'):format(recast / 1000) end
   append(lines, 'Range: ', number(s.range))
-  append(lines, 'AE range: ', firstNumber(s.aeRange, s.ae_range))
+  append(lines, 'AE range: ', number(s.ae_range))
   local pushback = number(s.push_back)
   if pushback and pushback ~= 0 then lines[#lines + 1] = ('Pushback: %.1f'):format(pushback) end
   if s.spell_type == 0 then
@@ -89,9 +82,7 @@ end
 -- is the spell header without effect lines and without cast messages
 -- (array of strings, possibly empty). Returns nil for non-table input.
 -- All values are plain tables, strings and numbers, safe to cross the
--- plugin boundary if the host supports plain-table returns. The caller
--- (init.lua ui_function) is owned by the main assistant; this helper
--- only shapes the data.
+-- plugin boundary.
 function M.spell_details(s, lookup)
   if type(s) ~= 'table' then return nil end
   local rows = spell_effects.rows(s, lookup) or {}
@@ -103,10 +94,10 @@ function M.item(item)
   if type(item) ~= 'table' then return nil end
   local lines = {}
   append(lines, 'Item ID: ', number(item.id))
-  append(lines, 'Required level: ', firstNumber(item.req_level, item.reqLevel))
-  append(lines, 'Stack: ', firstNumber(item.stack, item.count))
+  append(lines, 'Required level: ', number(item.req_level))
+  append(lines, 'Stack: ', number(item.stack))
   append(lines, 'Charges: ', number(item.charges))
-  append(lines, 'Bag slots: ', firstNumber(item.bag_slots, item.bagSlots))
+  append(lines, 'Bag slots: ', number(item.bag_slots))
   append(lines, 'Weight: ', number(item.weight))
   append(lines, 'AC: ', number(item.ac))
   append(lines, 'HP: ', number(item.hp))

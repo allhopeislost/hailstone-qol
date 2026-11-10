@@ -3,7 +3,6 @@ local M = {}
 local VERSION = 1
 local FILE = 'qol.lua'
 local DEFAULTS = {
-  nameplate_level = true, -- Legacy saved field only; target_level now controls both displays.
   target_level = true,
   npc_class = true,
   spell_info = true,

@@ -14,28 +14,28 @@ local function readSaved()
 end
 
 local settings = Settings.new(mq, function() return nil end)
-for _, name in ipairs({'nameplate_level', 'target_level', 'npc_class', 'spell_info', 'item_info', 'map_target_line', 'map_npcs'}) do
+for _, name in ipairs({'target_level', 'npc_class', 'spell_info', 'item_info', 'map_target_line', 'map_npcs'}) do
   assert(settings.get(name) == true)
 end
 assert(settings.get('item_preview') == false, 'the experimental tier preview defaults to off')
 
 assert(settings.set('target_level', false))
 assert(saved.version == 1 and saved.target_level == false)
-assert(saved.nameplate_level and saved.npc_class and saved.spell_info and saved.item_info
+assert(saved.npc_class and saved.spell_info and saved.item_info
   and saved.map_target_line and saved.map_npcs)
 settings = Settings.new(mq, readSaved)
 assert(settings.get('target_level') == false and settings.get('spell_info') == true)
 assert(settings.get('map_target_line') == true and settings.get('map_npcs') == true)
 
 settings = Settings.new(mq, function()
-  return {version = 1, nameplate_level = false, item_info = false}
+  return {version = 1, npc_class = false, item_info = false}
 end)
-assert(settings.get('nameplate_level') == false and settings.get('item_info') == false)
+assert(settings.get('npc_class') == false and settings.get('item_info') == false)
 assert(settings.get('map_target_line') == true, 'missing map_target_line key defaults to on')
 assert(settings.get('map_npcs') == true, 'missing map_npcs key defaults to on')
-assert(settings.get('npc_class') == true, 'missing npc_class key defaults to on')
+assert(settings.get('target_level') == true, 'missing target_level key defaults to on')
 assert(settings.set('target_level', false))
-assert(saved.nameplate_level == false and saved.item_info == false)
+assert(saved.npc_class == false and saved.item_info == false)
 assert(saved.map_target_line == true and saved.map_npcs == true)
 
 settings = Settings.new(mq, function()
@@ -43,7 +43,7 @@ settings = Settings.new(mq, function()
 end)
 assert(settings.get('map_target_line') == false, 'explicit map_target_line=false is honored')
 assert(settings.get('map_npcs') == false, 'explicit map_npcs=false is honored')
-assert(settings.get('nameplate_level') == true and settings.get('target_level') == true)
+assert(settings.get('target_level') == true)
 assert(settings.get('spell_info') == true and settings.get('item_info') == true)
 
 settings = Settings.new(mq, function() return nil end)
@@ -99,13 +99,13 @@ assert(settings.get('spell_info') == true and settings.get('item_info') == true)
 assert(settings.get('map_target_line') == true and settings.get('map_npcs') == true)
 assert(settings.get('item_preview') == false, 'a missing item_preview key defaults to off')
 settings = Settings.new(mq, function() error('bad config') end)
-assert(settings.get('nameplate_level') == true)
+assert(settings.get('target_level') == true)
 
 local reported
 settings = Settings.new(mq, function() return nil end, function(err) reported = err end)
 failSave = true
-assert(not settings.set('nameplate_level', false))
-assert(settings.get('nameplate_level') == false)
+assert(not settings.set('npc_class', false))
+assert(settings.get('npc_class') == false)
 assert(reported:find('disk unavailable', 1, true))
 failSave = false
 

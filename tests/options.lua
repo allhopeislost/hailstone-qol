@@ -38,8 +38,8 @@ dofile('init.lua')
 assert(options.target_level and options.spell_info)
 assert(options.target_level.min == 0 and options.target_level.max == 1)
 assert(options.spell_info.min == 0 and options.spell_info.max == 1)
-assert(not options.nameplate_level and options.item_info and options.item_preview)
-assert(options.target_level.label == 'Show target Levels')
+assert(options.item_info and options.item_preview)
+assert(options.target_level.label == 'Show target levels')
 assert(options.npc_class.label == 'Show target class')
 assert(options.map_npcs.label == 'Show all NPCs on the map')
 for _, option in pairs(options) do
@@ -107,17 +107,17 @@ assert(functions.item_info(item) == nil)
 options.item_info.set(1)
 assert(functions.item_info(item):find('HP: 12', 1, true))
 assert(functions.item_info(nil) == nil)
-assert(saved.nameplate_level and saved.item_info)
+assert(saved.target_level and saved.item_info)
 
 -- The experimental tier preview is opt-in: off by default, refused while
 -- off, available once enabled.
-assert(functions.preview_enabled and functions.preview_enabled() == false)
+assert(options.item_preview.get() == 0)
 local denied = functions.request_item_preview(51907)
 assert(denied.ok == false and denied.kind == 'disabled')
 options.item_preview.set(1)
-assert(options.item_preview.get() == 1 and functions.preview_enabled() == true)
+assert(options.item_preview.get() == 1)
 options.item_preview.set(0)
-assert(options.item_preview.get() == 0 and functions.preview_enabled() == false)
+assert(options.item_preview.get() == 0)
 
 failSave = true
 options.target_level.set(0)

@@ -1,7 +1,7 @@
 # Hailstone QoL
 
 Hailstone QoL is a Lua add-on for small quality-of-life details in Hailstone's **Modern UI**. The current release
-is **0.2.3**, published from the public GitHub add-on repository
+is **0.2.4**, published from the public GitHub add-on repository
 `https://github.com/allhopeislost/hailstone-qol`.
 
 ## Features
@@ -27,9 +27,8 @@ is **0.2.3**, published from the public GitHub add-on repository
 - Offers seven on/off options in **Options → Plugins**: `target_level`, `npc_class`,
   `spell_info`, `item_info`, `item_preview`, `map_target_line`, and `map_npcs`. `item_preview` controls the
   **Other versions** controls and defaults to off (see below); the other options default to on. They are stored in
-  the version-1 configuration file, `qol.lua`. **Show target Levels** (`target_level`) controls both NPC
-  nameplate levels and target-window levels, using the existing target-level preference. The old
-  `nameplate_level` field is retained for compatibility but no longer controls a display.
+  the version-1 configuration file, `qol.lua`. **Show target levels** (`target_level`) controls both NPC
+  nameplate levels and target-window levels.
   Settings use `mq.pickle`/`dofile` under MacroQuest's
   `mq.configDir`, outside the add-on files, so add-on updates do not replace them.
 - Draws a straight line from the player to the current target on the Modern large map when
@@ -39,7 +38,7 @@ is **0.2.3**, published from the public GitHub add-on repository
   `hs.hooks{map_spawn = ...}`. Corpses and players are left out; the minimap only asks about NPCs inside its circle.
   Each mark starts from the map's con colour and name and follows the map's layers and height filter.
 
-These integrations target the user's supported, custom fixed Hailstone client, including its nameplate hook,
+These integrations target a custom Hailstone client, including its nameplate hook,
 displayed-item/spell APIs and extended `hs.spell` records. An older/reference client lacking these extensions is not
 the compatibility baseline. If an optional hook/API or data record is absent, that extra is skipped without guessing
 IDs from names; available fields still format safely. Failed config saves produce a QoL chat warning.
@@ -51,53 +50,46 @@ hook simply shows no extra NPCs. Hailstone's server rules can restrict the add-o
 (`read`, `ui`, `extend`, `commands`, `actions`); relevant client APIs and server-provided data may also be
 unavailable. Updating from 0.2.1 asks the player to approve the added `commands`/`actions` permissions.
 
-Readable spell effects cover only SPA 1 (AC), 2 (attack), 4-10 (strength, dexterity, agility, stamina,
-intelligence, wisdom, charisma), 11 (haste/slow), 216 (accuracy) and 292 (strikethrough), with formulas
-100 (fixed), 101 (+1 per 2 levels) and 102 (+1 per level). The minimum is computed from the lowest valid
-`class_level`; the cap level is the first level reaching a nonzero `max`. Uncapped effects show a scale hint
-and never a fabricated cap. AC uses the MQ-style display `floor(abs(raw)*3/10)` while the cap level comes
-from the raw value. Haste percent is `raw - 100` and slow percent is `100 - raw`; mixed ranges around 100,
-negative bases/maxes, unknown formulas, unknown accuracy skills (known: 0 = 1H Blunt, -1 = all skills) and
-other SPAs fall back to the raw SPA line. Values are spell-effect values, not character-sheet totals.
-Uncapped AC scaling and caps unreachable within the client level byte also fall back to raw.
-Scaling effects without a usable `class_level` fall back to raw (no level is ever guessed); fixed
-effects need no level. Slows with a nonzero cap also stay raw, since the client snaps to the floor.
+Spell effects are shown as readable lines through a table in `spell_effects.lua` that says how each SPA's numbers
+are displayed: stats, resists, AC, attack, haste/slow, HP/mana/endurance (per tick when the spell has a duration),
+damage shields, percentages, accuracy, stuns, procs, summons, counters and cures, plus name-only effects such as
+invisibility or gate. Scaling follows the common level formulas (fixed, per-level, per-N-levels, and the
+over-level-N ramps). The minimum is computed from the lowest valid `class_level`; the cap level is the first level
+reaching a nonzero `max`. Uncapped effects show a scale hint and never a fabricated cap. AC uses the MQ-style display
+`floor(abs(raw)*3/10)` while the cap level comes from the raw value. Haste percent is `raw - 100` and slow percent
+is `100 - raw`. Anything the table does not cover (unknown SPAs or formulas, tick-based or random formulas,
+mixed ranges around 100, unknown accuracy skills) falls back to a named raw line such as
+`Slot 2: Root (SPA 99, base ..., max ..., formula ...)`, so no data is lost. Values are spell-effect values, not
+character-sheet totals. Scaling effects without a usable `class_level` also stay raw (no level is ever guessed);
+fixed effects need no level. Slows with a nonzero cap stay raw, since the client snaps to the floor.
 `info.spell_effects(s)` returns the effect rows and `info.spell_details(s)` returns
 `{effects, metadata}` for UI rendering; both use plain tables only.
 
-Modern UI is the supported UI pack. Gamepad UI is not supported and is outside this project's scope;
-`ui/gamepad/target.lua` is retained only as legacy content, and no QoL feature development targets Gamepad.
+Modern UI is the only supported UI pack; the Gamepad UI is not supported.
 
 ## Other item versions
 
 This is opt-in: enable `item_preview` in **Options → Plugins** (it defaults to off). On Project Triune, each
-Modern item window then shows **Other versions** after its additional information, with two buttons for the other
-tiers of the same item: **Enchanted** and **Legendary** for a Base item, Base and Legendary for Enchanted, and Base
-and Enchanted for Legendary. The item's current tier is never offered. A click calls QoL's
-`request_item_preview(itemId)` once from the running script, which validates the id, confirms the server is
-Project Triune through `hs.server()`, and calls `hs.inspect_item(itemId)`. Nothing is requested while a window is
-opened, drawn or loaded. The buttons wrap onto separate rows in a narrow window, and the helper text says
-"Opens a separate item window."
+Modern item window then shows **Other versions** after its additional information, with a button for each of the
+other two tiers of the same item (Base, Enchanted, Legendary). Clicking one asks the client to open that tier in its
+own, ordinary item window; the window you clicked in is left alone, and asking for the same item again reuses the
+window the client already has. The client shows at most six item windows.
 
-The client opens the requested item in an ordinary, independent native item window. This window is never replaced:
-its name, icon, stats, effects, Modified values and augment actions always stay live and usable, whatever version
-was requested. Each opened window can offer its own other tiers, and asking for the same item again reuses the
-window the client already has for it. QoL does not create duplicate windows, close, hide, move, scan or click any
-item window, and does not claim focus for an existing one.
+Under the hood, a click calls QoL's `request_item_preview(itemId)` once, which validates the id, confirms the server
+is Project Triune through `hs.server()` and calls `hs.inspect_item(itemId)`. Nothing is requested while a window is
+opened or drawn.
 
-The requested version may not exist on the server, and the client cannot be asked to confirm that it opened a
-window; after a click QoL only reports that the client was asked. If the API is missing, the option is off, the
-server cannot be confirmed or permission is refused, a small status says why. Hailstone's client shows at most six
-item windows; opening more follows its own limit. Ids outside the known base (1–999,999), +1,000,000 and
-+2,000,000 ranges get no version buttons; there is no wrapping or guessing. The feature changes no capability
-declarations and adds no new request path.
+The requested version may not exist on the server, and the client does not confirm that a window opened; after a
+click QoL only reports that the client was asked. If the API is missing, the option is off, the server cannot be
+confirmed or permission is refused, a small status says why. Ids outside the known base (1–999,999),
++1,000,000 and +2,000,000 ranges get no buttons.
 
 ## Install
 
 Install it from Hailstone's login-screen **Add-ons** panel: paste the repository link for the latest release, or a specific release's tag-page link. Inspect the add-on
 name/version and requested capabilities, then choose **Install**. The link forms are
 `https://github.com/allhopeislost/hailstone-qol` and
-`https://github.com/allhopeislost/hailstone-qol/releases/tag/v0.2.3`; use the repository or release/tag page, not a direct
+`https://github.com/allhopeislost/hailstone-qol/releases/tag/v0.2.4`; use the repository or release/tag page, not a direct
 asset or ZIP-download link. Hailstone's add-on manager requires a public GitHub
 repository/release to fetch the manifest and package. Branch links (`.../tree/<branch>`) are not supported:
 the package is published as a release asset, not as a file in the branch.
@@ -127,8 +119,6 @@ To also exercise the adapter against a client checkout's actual Modern map (with
 lua tests/map.lua /path/to/Hailstone-dev/ui/modern/map.lua
 ```
 
-This restoration changes Lua source/tests/docs only; existing manifests and ZIPs are not rebuilt or updated.
-
 For a separate release task, the package helper stages only its declared runtime-file allowlist, then delegates manifest and deterministic ZIP
 creation to Hailstone's `tools/make_addon.py`. Give it an output directory outside the source tree. Pass the client
 tool explicitly when it is not in the sibling `Hailstone-dev` checkout:
@@ -138,7 +128,7 @@ python3 tools/package.py --out /tmp/qol-release
 python3 tools/package.py --make-addon /path/to/Hailstone-dev/tools/make_addon.py --out /tmp/qol-release
 ```
 
-The helper builds version 0.2.3 packages and a generated release manifest in that output directory; it does not
+The helper builds version 0.2.4 packages and a generated release manifest in that output directory; it does not
 publish, sign, install or run the client. To cut a signed release, sign the generated manifest with
 `hailstone_sign sign <secret-key-file> <out>/hailstone-addon.txt` (key kept outside the repository), verify it,
 copy the signed manifest back to the repository root, and upload the manifest and ZIP as assets of the

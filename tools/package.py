@@ -13,7 +13,7 @@ import tempfile
 
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = "0.2.3"
+VERSION = "0.2.4"
 
 # The manifest's capability ceiling. `commands` lets the dialogs' close box
 # (and Esc/menu Close) hide the game window; `actions` lets the displays'
@@ -30,7 +30,6 @@ RUNTIME_FILES = (
     "settings.lua",
     "spell_effects.lua",
     "spell_spa_names.lua",
-    "ui/gamepad/target.lua",  # retained legacy file; not a promise of Gamepad support
     "ui/modern/itemdisplay.lua",
     "ui/modern/maptargetline.lua",
     "ui/modern/spelldisplay.lua",

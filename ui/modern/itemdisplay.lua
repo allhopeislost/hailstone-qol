@@ -46,12 +46,9 @@ end
 
 local function versionTarget(base, tier) return base + tier * VERSION_STRIDE end
 
--- The Options → Plugins switch plus a lightweight eligibility check. Older content without the
--- eligibility callback keeps working through preview_enabled; without either, the controls stay hidden.
+-- The Options → Plugins switch plus a lightweight eligibility check; without the plugin the controls stay hidden.
 local function versionsEnabled(plugin)
-  if plugin == nil then return false end
-  local fn = plugin.item_versions_available
-  if type(fn) ~= 'function' then fn = plugin.preview_enabled end
+  local fn = plugin and plugin.item_versions_available
   if type(fn) ~= 'function' then return false end
   local ok, enabled = pcall(fn)
   return ok and enabled == true

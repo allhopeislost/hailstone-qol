@@ -5,8 +5,8 @@ local buttons, texts, wrapped, colored, headings, tooltips, clicks = {}, {}, {},
 local stmlLinks, drawLinks, stmlRaws, infoRecords, dataReads = {}, {}, {}, {}, {}
 local requested, requestCalls = {}, 0
 local now, width, invisibleClick, hovered, checkboxClick, tierClick = 10, 380, false, false, false, nil
-local pluginAvailable, withAvailability, requestImpl = true, true, nil
-local previewEnabled, versionsAvailable = true, true
+local pluginAvailable, requestImpl = true, nil
+local versionsAvailable = true
 
 local color = {1, 1, 1, 1}
 local T = {
@@ -81,12 +81,9 @@ eq = {
         infoRecords[#infoRecords + 1] = record
         return require('info').item(record)
       end,
-      preview_enabled = function() return previewEnabled end,
       request_item_preview = requestImpl,
     }
-    if withAvailability then
-      plugin.item_versions_available = function() return versionsAvailable end
-    end
+    plugin.item_versions_available = function() return versionsAvailable end
     return plugin
   end,
   ClickChild = function(win, id, phase) clicks[#clicks + 1] = {win, id, phase} end,
@@ -171,8 +168,7 @@ local function load()
   stmlLinks, drawLinks, stmlRaws, infoRecords, dataReads = {}, {}, {}, {}, {}
   requested, requestCalls = {}, 0
   now, width, invisibleClick, hovered, checkboxClick, tierClick = 10, 380, false, false, false, nil
-  pluginAvailable, withAvailability = true, true
-  previewEnabled, versionsAvailable = true, true
+  pluginAvailable, versionsAvailable = true, true
   requestImpl = function(id)
     requestCalls = requestCalls + 1
     requested[#requested + 1] = id
@@ -336,16 +332,7 @@ frame()
 assertButtons({'Enchanted', 'Legendary'})
 assert(has(headings, 'Other versions'))
 
--- Older content with only preview_enabled still works; a missing plugin fails gracefully.
-load()
-withAvailability = false
-item(1, 51907, 'Original Base', 'Live base description')
-frame()
-assertButtons({'Enchanted', 'Legendary'})
-previewEnabled = false
-frame()
-assert(#buttons == 0)
-previewEnabled = true
+-- A missing plugin fails gracefully.
 load()
 pluginAvailable = false
 item(1, 51907, 'Original Base', 'Live base description')

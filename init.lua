@@ -6,8 +6,16 @@ local function reportSaveError(err)
 end
 local settings = require('settings').new(mq, nil, reportSaveError)
 
+local function finite(value)
+  return type(value) == 'number' and value == value and value > -math.huge and value < math.huge
+end
+
+local function positiveInteger(value)
+  return finite(value) and value >= 1 and value % 1 == 0
+end
+
 local features = {
-  {name = 'target_level', label = 'Show target Levels'},
+  {name = 'target_level', label = 'Show target levels'},
   {name = 'npc_class', label = 'Show target class'},
   {name = 'spell_info', label = 'Additional spell information'},
   {name = 'item_info', label = 'Additional item information'},
@@ -32,14 +40,14 @@ end
 
 hs.ui_function('spell_info', function(id)
   if not settings.get('spell_info') then return nil end
-  if type(id) ~= 'number' or id <= 0 or id ~= id or id == math.huge then return nil end
+  if not finite(id) or id <= 0 then return nil end
   return info.spell(hs.spell(id))
 end)
 
 -- The display gets structured effect rows as well as the existing text API.
 hs.ui_function('spell_view', function(id)
   if not settings.get('spell_info') then return nil end
-  if type(id) ~= 'number' or id <= 0 or id ~= id or id == math.huge then return nil end
+  if not finite(id) or id <= 0 then return nil end
   local spell = hs.spell(id)
   if type(spell) ~= 'table' then return nil end
   local details = info.spell_details(spell, function(spellId)
@@ -56,13 +64,9 @@ hs.ui_function('map_target', function()
   local player = hs.player()
   if not player or player.in_zone == false then return nil end
   local id = player.target_id
-  if type(id) ~= 'number' or id <= 0 or id ~= id or id == math.huge
-      or id % 1 ~= 0 or id == player.spawn_id then return nil end
+  if not positiveInteger(id) or id == player.spawn_id then return nil end
   local target = hs.spawn(id)
   if not target then return nil end
-  local function finite(value)
-    return type(value) == 'number' and value == value and value > -math.huge and value < math.huge
-  end
   if not finite(target.x) or not finite(target.y) then return nil end
   -- Hailstone world axes differ from /loc and from map-file axes.
   return {x = -target.y, y = -target.x}
@@ -86,6 +90,20 @@ local function detail(spawn, level, class)
   return ' [' .. table.concat(parts, ' ') .. ']'
 end
 
+hs.ui_function('item_info', function(item)
+  if not settings.get('item_info') then return nil end
+  return info.item(item)
+end)
+
+hs.ui_function('target_name', function(name)
+  local showLevel, showClass = settings.get('target_level'), settings.get('npc_class')
+  if (not showLevel and not showClass) or type(name) ~= 'string' then return name end
+  local id = mq.TLO.Target.ID()
+  local spawn = id and hs.spawn(id)
+  if not spawn or not spawn.npc or spawn.corpse then return name end
+  return name .. detail(spawn, showLevel, showClass)
+end)
+
 -- Supported custom clients supply nameplate text and map spawn data to these hooks.
 if hs.hooks then
   hs.hooks{
@@ -105,16 +123,6 @@ if hs.hooks then
     end,
   }
 end
-hs.ui_function('item_info', function(item)
-  if not settings.get('item_info') then return nil end
-  return info.item(item)
-end)
-
--- Whether item version controls may be drawn. The item display asks this before
--- showing them; older content without this function uses preview_enabled.
-hs.ui_function('preview_enabled', function()
-  return settings.get('item_preview') == true
-end)
 
 local function projectTriune(server)
   if type(server) ~= 'table' then return false end
@@ -154,8 +162,7 @@ hs.ui_function('request_item_preview', function(itemId)
     return {ok = false, kind = 'disabled',
       error = 'Item version windows are turned off; enable them under Options → Plugins.'}
   end
-  if type(itemId) ~= 'number' or itemId ~= itemId or itemId == math.huge or itemId == -math.huge
-      or itemId % 1 ~= 0 or itemId < 1 or itemId > 4294967295 then
+  if not positiveInteger(itemId) or itemId > 4294967295 then
     return {ok = false, kind = 'invalid_id', error = 'Invalid item id for an item version request.'}
   end
   if type(hs.server) ~= 'function' then
@@ -186,13 +193,4 @@ hs.ui_function('request_item_preview', function(itemId)
     return {ok = false, kind = 'refused', error = 'The item window request was refused: ' .. tostring(err)}
   end
   return {ok = true, id = itemId}
-end)
-
-hs.ui_function('target_name', function(name)
-  local showLevel, showClass = settings.get('target_level'), settings.get('npc_class')
-  if (not showLevel and not showClass) or type(name) ~= 'string' then return name end
-  local id = mq.TLO.Target.ID()
-  local spawn = id and hs.spawn(id)
-  if not spawn or not spawn.npc or spawn.corpse then return name end
-  return name .. detail(spawn, showLevel, showClass)
 end)
