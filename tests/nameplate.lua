@@ -16,7 +16,7 @@ end
 dofile('init.lua')
 
 assert(hooks and hooks.nameplate)
-assert(options.nameplate_level.get() == 1)
+assert(options.target_level.get() == 1)
 assert(functions.target_name and functions.spell_info and functions.item_info)
 assert(options.target_level and options.spell_info)
 assert(options.item_info.get() == 1)
@@ -28,21 +28,21 @@ for _, spawn in ipairs({{}, {npc = false, level = 12}, {npc = true, corpse = tru
   assert(nameplate(spawn, 'unchanged') == nil)
 end
 assert(nameplate(nil, 'unchanged') == nil)
-options.nameplate_level.set(0)
+options.target_level.set(0)
 assert(nameplate({npc = true, level = 12}, 'a rat') == nil)
-assert(options.target_level.get() == 1)
-options.nameplate_level.set(1)
+assert(options.target_level.get() == 0)
+options.target_level.set(1)
 assert(nameplate({npc = true, level = 12}, 'a rat') == 'a rat [12]')
 
 -- The class rides along with the level; each switch also works alone.
 local rat = {npc = true, level = 12, class = 9}
 assert(options.npc_class.get() == 1)
 assert(nameplate(rat, 'a rat') == 'a rat [12 ROG]')
-options.nameplate_level.set(0)
+options.target_level.set(0)
 assert(nameplate(rat, 'a rat') == 'a rat [ROG]')
 options.npc_class.set(0)
 assert(nameplate(rat, 'a rat') == nil)
-options.nameplate_level.set(1)
+options.target_level.set(1)
 assert(nameplate(rat, 'a rat') == 'a rat [12]')
 options.npc_class.set(1)
 

@@ -1,5 +1,5 @@
 local options, functions = {}, {}
-local spawn
+local spawn, nameplate
 local spellReads = 0
 local failSave = false
 local saved, warning
@@ -13,7 +13,7 @@ package.preload.hailstone = function()
   return {
     option = function(option) options[option.name] = option end,
     ui_function = function(name, fn) functions[name] = fn end,
-    hooks = function(hooks) assert(hooks.nameplate) end,
+    hooks = function(hooks) nameplate = assert(hooks.nameplate) end,
     chat = function(text, color) warning = {text, color} end,
     spawn = function() return spawn end,
     spell = function(id)
@@ -38,7 +38,10 @@ dofile('init.lua')
 assert(options.target_level and options.spell_info)
 assert(options.target_level.min == 0 and options.target_level.max == 1)
 assert(options.spell_info.min == 0 and options.spell_info.max == 1)
-assert(options.nameplate_level and options.item_info and options.item_preview)
+assert(not options.nameplate_level and options.item_info and options.item_preview)
+assert(options.target_level.label == 'Show target Levels')
+assert(options.npc_class.label == 'Show target class')
+assert(options.map_npcs.label == 'Show all NPCs on the map')
 for _, option in pairs(options) do
   assert(option.min == 0 and option.max == 1)
   assert(option.get() == (option.name == 'item_preview' and 0 or 1))
@@ -50,8 +53,10 @@ assert(functions.spell_view)
 options.target_level.set(0)
 spawn = {npc = true, level = 12}
 assert(functions.target_name('a rat') == 'a rat')
+assert(nameplate(spawn, 'a rat') == nil)
 options.target_level.set(1)
 assert(functions.target_name('a rat') == 'a rat [12]')
+assert(nameplate(spawn, 'a rat') == 'a rat [12]')
 
 -- The target window adds the class with the same single switch as the nameplates.
 spawn = {npc = true, level = 12, class = 2}

@@ -13,7 +13,7 @@ import tempfile
 
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = "0.2.2"
+VERSION = "0.2.3"
 
 # The manifest's capability ceiling. `commands` lets the dialogs' close box
 # (and Esc/menu Close) hide the game window; `actions` lets the displays'

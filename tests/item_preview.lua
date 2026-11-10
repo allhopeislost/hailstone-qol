@@ -13,13 +13,16 @@ end
 dofile('init.lua')
 assert(#messages == 0, 'loading QoL must not request or report a preview')
 local request = assert(functions.request_item_preview)
+assert(functions.item_versions_available, 'the item windows need a lightweight eligibility callback')
 assert(functions.test_item_preview == nil, 'the temporary fixed-id diagnostic must be gone')
 
--- The experiment is opt-in: requests stay disabled until its option is on.
+-- The feature is opt-in: requests and controls stay off until its option is on.
 assert(options.item_preview and options.item_preview.get() == 0)
+assert(functions.item_versions_available() == false)
 assert(request(1000001).kind == 'disabled' and servers == 0)
 options.item_preview.set(1)
 assert(options.item_preview.get() == 1 and saved.item_preview == true)
+assert(functions.item_versions_available() == false, 'without hs.server the controls stay hidden')
 
 local function triune()
   return {name = 'Project Triune', host = 'eq-emulator.com', port = 5999,
@@ -85,4 +88,24 @@ assert(#requests == 1 and requests[1] == 2051907)
 result = request(4294967295)
 assert(result.ok == true and #requests == 2 and requests[2] == 4294967295)
 assert(#messages == 0, 'the callback reports through its return value, not chat')
+
+-- Eligibility follows the live server identity, cached briefly so six item windows share one read.
+local clock, realTime = 1000, os.time
+os.time = function() return clock end
+local eligibilityReads = 0
+hs.server = function() eligibilityReads = eligibilityReads + 1 return triune() end
+assert(functions.item_versions_available() == true)
+assert(functions.item_versions_available() == true and eligibilityReads == 1,
+  'eligibility is shared within the same second')
+clock = clock + 1
+hs.server = function() eligibilityReads = eligibilityReads + 1 return {name = 'Triune Vanilla'} end
+assert(functions.item_versions_available() == false, 'a different server hides the controls')
+assert(eligibilityReads == 2)
+clock = clock + 1
+hs.server = function() eligibilityReads = eligibilityReads + 1 error('server gone') end
+assert(functions.item_versions_available() == false, 'a failing server read hides the controls')
+options.item_preview.set(0)
+assert(functions.item_versions_available() == false)
+assert(eligibilityReads == 3, 'disabling the option needs no server read')
+os.time = realTime
 print('item preview request: ok')

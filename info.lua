@@ -103,8 +103,6 @@ function M.item(item)
   if type(item) ~= 'table' then return nil end
   local lines = {}
   append(lines, 'Item ID: ', number(item.id))
-  append(lines, 'Icon: ', number(item.icon))
-  append(lines, 'Type: ', firstNumber(item.item_class, item.item_type, item.type))
   append(lines, 'Required level: ', firstNumber(item.req_level, item.reqLevel))
   append(lines, 'Stack: ', firstNumber(item.stack, item.count))
   append(lines, 'Charges: ', number(item.charges))

@@ -31,7 +31,8 @@ local item = {id = 5, icon = 6, count = 2, charges = 4, stackSize = 20, stackabl
   weight = 1.5, magic = true, lore = false, type = 10, size = 1, ac = 3, hp = 12, mana = 0}
 text = info.item(item)
 assert(text:find('Item ID: 5', 1, true))
-assert(text:find('Icon: 6', 1, true))
+assert(not text:find('Icon:', 1, true), 'the item window header already shows the icon')
+assert(not text:find('Type:', 1, true), 'item type is not repeated in additional information')
 assert(text:find('Stack: 2', 1, true))
 assert(text:find('AC: 3', 1, true))
 assert(text:find('Magic', 1, true))
@@ -40,7 +41,9 @@ local hailstoneItem = {id = 11, icon = 4, item_class = 3, req_level = 20, stack 
 text = info.item(hailstoneItem)
 assert(text:find('Required level: 20', 1, true))
 assert(text:find('Click spell ID: 99', 1, true))
+assert(not text:find('Icon:', 1, true) and not text:find('Type:', 1, true))
 assert(info.item({}) == nil)
+assert(info.item({icon = 4, item_class = 3}) == nil, 'icon and type alone are not additional information')
 
 -- Full supported custom-client spell record. Unsupported effects keep raw
 -- SPA text; supported ones render readably. Cast messages are not shown.
@@ -86,10 +89,11 @@ assert(info.spell_effects(nil) ~= nil and #info.spell_effects(nil) == 0)
 
 text = info.item({id = 123, icon = 44, value = 250, favor = 10, damage = 8, delay = 24,
   name = 'Sword', lore = 'An ancient blade'})
-for _, fragment in ipairs({'Item ID: 123', 'Icon: 44', 'Base value: 250 copper',
+for _, fragment in ipairs({'Item ID: 123', 'Base value: 250 copper',
     'Tribute value: 10', 'Delay / damage: 3.000', 'Lore: An ancient blade'}) do
   assert(text:find(fragment, 1, true), fragment)
 end
+assert(not text:find('Icon:', 1, true) and not text:find('Type:', 1, true))
 assert(info.item({name = 'Sword', lore = 'Sword', damage = 0, delay = 24}) == nil)
 assert(info.item({lore = '', damage = 8, delay = 0}) == nil)
 for _, bad in ipairs({false, 'bad', 42}) do

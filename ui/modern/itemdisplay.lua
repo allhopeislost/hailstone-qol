@@ -5,7 +5,8 @@
 -- beside their values, the game's tooltips on the names), and the description with its effects. Everything is the
 -- game's text (CItemDisplayWnd's children: the info lines, IDW_Row<r>Col<c>Stat / Value, IDW_Heroic<n>, the
 -- description STML); the Modified switch is the window's own button. The augment sockets are the window's socket
--- rows (UpdateAugmentSlots) with its buttons.
+-- rows (UpdateAugmentSlots) with its buttons. After the additional information, other tiers of the same item can
+-- be asked for through QoL; the client opens them in its own separate native item windows, never in this one.
 local hud = dofile("lib/hud.lua")
 local W = dofile("lib/widgets.lua")
 local stml = dofile("lib/stml.lua")
@@ -29,41 +30,31 @@ for n = 1, 6 do
   SOCKET_IDS[n] = { screen = p .. "_Screen", item = p .. "_Item", desc = p .. "_Description" }
 end
 
--- Experimental tier preview: NMS items use the base id + 1,000,000 for Enchanted and + 2,000,000 for
+-- Other item versions: NMS items use the base id + 1,000,000 for Enchanted and + 2,000,000 for
 -- Legendary. Only those three tiers are accepted; there is no modulo or wrapping for other ids.
-local PREVIEW_STRIDE = 1000000
-local PREVIEW_TIERS = { "Base", "Enchanted", "Legendary" }
-local PREVIEW_POLL = 0.25
-local PREVIEW_TIMEOUT = 5
-local PREVIEW_READ_TIMEOUT = 1
-local DISPLAY_FIELDS = { "id", "icon", "name", "lore", "value", "stack_count", "damage", "delay",
-  "item_type", "favor" }
+local VERSION_STRIDE = 1000000
+local VERSION_TIERS = { "Base", "Enchanted", "Legendary" }
 
-local function previewTier(id)
-  if type(id) ~= "number" or id ~= id or id < 1 or id > 3 * PREVIEW_STRIDE - 1
+local function versionTier(id)
+  if type(id) ~= "number" or id ~= id or id < 1 or id > 3 * VERSION_STRIDE - 1
       or id % 1 ~= 0 then return nil end
-  local tier = id // PREVIEW_STRIDE
-  local base = id - tier * PREVIEW_STRIDE
+  local tier = id // VERSION_STRIDE
+  local base = id - tier * VERSION_STRIDE
   if tier < 0 or tier > 2 or base < 1 then return nil end
   return tier, base
 end
 
-local function previewTarget(base, tier) return base + tier * PREVIEW_STRIDE end
+local function versionTarget(base, tier) return base + tier * VERSION_STRIDE end
 
--- The Options → Plugins switch for the experiment. A missing plugin or a
--- plugin without this function keeps the previous always-on behavior; an
--- explicit false hides the buttons and clears any running preview.
-local function previewEnabled(plugin)
-  if plugin == nil or type(plugin.preview_enabled) ~= 'function' then return true end
-  local ok, enabled = pcall(plugin.preview_enabled)
+-- The Options → Plugins switch plus a lightweight eligibility check. Older content without the
+-- eligibility callback keeps working through preview_enabled; without either, the controls stay hidden.
+local function versionsEnabled(plugin)
+  if plugin == nil then return false end
+  local fn = plugin.item_versions_available
+  if type(fn) ~= 'function' then fn = plugin.preview_enabled end
+  if type(fn) ~= 'function' then return false end
+  local ok, enabled = pcall(fn)
   return ok and enabled == true
-end
-
--- The ten fields eq.DisplayItemData documents; a plain copy so a later frame keeps the requested version.
-local function displayRecord(data)
-  local out = {}
-  for _, key in ipairs(DISPLAY_FIELDS) do out[key] = data[key] end
-  return out
 end
 
 -- ---------------------------------------------------------------- reading the window
@@ -150,119 +141,34 @@ local function statColumns(win)
   return cols
 end
 
-local function windowHasSockets(win)
-  local any = W.Shown(win, "IDW_Appearance_Socket_Screen")
-  for n = 1, 6 do any = any or W.Shown(win, SOCKET_IDS[n].screen) end
-  return any
-end
+-- ---------------------------------------------------------------- other versions
+-- A small status line per item window, set only by a click. The controls never change this window: the client
+-- requests the real item id and opens it in its own native item window, which can offer its own other versions.
+local versionStatus = {}
 
--- ---------------------------------------------------------------- the experimental preview
--- One state per item display, keyed by that display and the original item id. A snapshot copies the native
--- response window's parsed text once, when its displayed id is exactly the requested id; the native windows
--- themselves are never closed, changed or clicked by the preview.
-local previews = {}
-
-local function windowName(instance)
-  return instance == 1 and "ItemDisplayWindow" or ("ItemDisplayWindow#" .. instance)
-end
-
-local function readSnapshot(instance, data, tier)
-  local win = windowName(instance)
-  if trim(W.Text(win, INFO_IDS[1])) == "" then return nil end
-  local lines = infoLines(win)
-  if #lines == 0 then return nil end
-  return {
-    tier = tier,
-    target = data.id,
-    instance = instance,
-    data = displayRecord(data),
-    lines = lines,
-    info = captioned(lines),
-    cols = statColumns(win),
-    desc = W.Text(win, "ItemDescription"),
-    sockets = windowHasSockets(win),
-  }
-end
-
-local function clearPreviews()
-  for win in pairs(previews) do previews[win] = nil end
-end
-
-local function pollPreview(state)
-  local pending = state.pending
-  if not pending then return end
-  local now = ui.GetTime()
-  if now < pending.nextPoll then return end
-  pending.nextPoll = now + PREVIEW_POLL
-  if type(eq.DisplayItemData) ~= "function" then
-    state.pending = nil
-    state.status = "Preview failed: eq.DisplayItemData is unavailable in this client."
-    return
+local function requestVersion(win, sourceId, base, tier)
+  local name = VERSION_TIERS[tier + 1]
+  local function fail(reason)
+    versionStatus[win] = { id = sourceId, text = 'Could not open the ' .. name .. ' item window: ' .. reason }
   end
-  local found, record
-  local read, err = pcall(function()
-    for n = 1, INSTANCES do
-      local data = eq.DisplayItemData(n)
-      if type(data) == "table" and data.id == pending.target then
-        found, record = n, data
-        return
-      end
-    end
-  end)
-  if not read then
-    state.pending = nil
-    state.status = "Preview failed: could not read the item displays: " .. tostring(err)
-    return
-  end
-  if found then
-    if not pending.matchedAt then pending.matchedAt = now end
-    local snapshot = readSnapshot(found, record, pending.tier)
-    if snapshot then
-      state.snapshot = snapshot
-      state.pending = nil
-      state.status = PREVIEW_TIERS[pending.tier + 1]
-        .. " preview from the server item window. The original item stays live here; the extra server window may remain visible."
-      return
-    end
-    if now - pending.matchedAt > PREVIEW_READ_TIMEOUT then
-      state.pending = nil
-      state.status = "The server item window was found, but its item text could not be read; the original item is still shown."
-      return
-    end
-  elseif now - pending.at > PREVIEW_TIMEOUT then
-    state.pending = nil
-    state.status = "No matching item window appeared for the requested tier; the original item is still shown."
-  end
-end
-
-local function requestPreview(state, tier)
-  if state.pending then return end
-  local target = previewTarget(state.base, tier)
-  if target == state.originId then
-    -- The current item is this tier: returning to it must show the live original, not a cached copy.
-    state.snapshot, state.status = nil, nil
-    return
-  end
-  if state.snapshot and state.snapshot.tier == tier and state.snapshot.target == target then return end
   local plugin = eq.Plugin("script:qol")
   local request = plugin and plugin.request_item_preview
   if type(request) ~= "function" then
-    state.status = "Experimental preview unavailable: QoL has no request_item_preview API."
+    fail("QoL has no request_item_preview API.")
     return
   end
-  local ok, result = pcall(request, target)
+  local ok, result = pcall(request, versionTarget(base, tier))
   if not ok then
-    state.status = "Preview request failed: " .. tostring(result)
+    fail(tostring(result))
     return
   end
   if type(result) ~= "table" or result.ok ~= true then
     local reason = type(result) == "table" and result.error or "no result from QoL."
-    state.status = "Preview refused: " .. tostring(reason)
+    fail(tostring(reason))
     return
   end
-  local now = ui.GetTime()
-  state.pending = { tier = tier, target = target, at = now, nextPoll = now + PREVIEW_POLL }
-  state.status = "Requesting " .. PREVIEW_TIERS[tier + 1] .. " preview; waiting for the server item window."
+  -- inspect_item returns no acknowledgement: say only that the client was asked, not that a window opened.
+  versionStatus[win] = { id = sourceId, text = 'Asked the client to open the ' .. name .. ' item window.' }
 end
 
 -- ---------------------------------------------------------------- drawing
@@ -360,17 +266,15 @@ local function statGrid(cols, s, width)
 end
 
 local stmlCache = {}
--- onLink nil: the live window's link. onLink false: a static preview that never sends a link to a native window.
-local function description(win, raw, width, onLink)
+local function description(win, raw, width)
   local c = stmlCache[win]
   if not c or c.raw ~= raw then
     c = { raw = raw, lines = stml.Lines(raw, C.text) }
     stmlCache[win] = c
   end
-  local follow = onLink
-  if follow == nil then follow = function(link) eq.StmlLink(win, "ItemDescription", link[1], link[2]) end end
-  if follow == false then follow = nil end
-  for _, line in ipairs(c.lines) do stml.DrawLine(line, width, follow) end
+  for _, line in ipairs(c.lines) do
+    stml.DrawLine(line, width, function(link) eq.StmlLink(win, "ItemDescription", link[1], link[2]) end)
+  end
   return #c.lines
 end
 
@@ -465,39 +369,59 @@ local function readItem(win, mod, desc, tex, u0, v0)
   return p
 end
 
-local function previewHeading(state, title, cw, s)
-  local x, y = ui.GetCursorScreenPos()
-  local tw, th = T.TextSize(title, T.font.normal)
-  local gap, height = 4 * s, 18 * s
-  local widths, total = {}, 0
-  for i, label in ipairs(PREVIEW_TIERS) do
-    widths[i] = math.max(44 * s, T.TextSize(label, T.font.small) + 12 * s)
-    total = total + widths[i] + (i > 1 and gap or 0)
+-- Heading, the two buttons for the other tiers and, after a click only, a small status line. The item's
+-- current tier is not offered; narrow windows put each button on its own row instead of clipping it.
+local function versionControls(win, sourceId, plugin, s, width)
+  local tier, base = versionTier(sourceId)
+  local status = versionStatus[win]
+  if status and status.id ~= sourceId then
+    versionStatus[win] = nil
+    status = nil
   end
-  T.Text(x, y, title, C.accent, T.font.normal)
-  local sameLine = cw - tw - 8 * s >= total
-  local bx = x + cw - total
-  local by = y + math.max(0, (th - height) / 2)
-  if not sameLine then by = y + th + 3 * s end
-  local selected = state.snapshot and state.snapshot.tier or state.sourceTier
-  for tier, label in ipairs(PREVIEW_TIERS) do
-    local bw = widths[tier]
-    if T.Button("##tierpreview" .. tier, bx, by, bx + bw, by + height, s, label,
-        { primary = tier - 1 == selected, enabled = not state.pending }) then
-      requestPreview(state, tier - 1)
-    end
-    bx = bx + bw + gap
+  if not tier or not versionsEnabled(plugin) then
+    versionStatus[win] = nil
+    return
   end
-  local bottom = math.max(y + th, by + height)
-  ui.SetCursorScreenPos(x, bottom + 2 * s)
-  ui.DrawLine(x, bottom + 2 * s, x + cw, bottom + 2 * s, C.ink[1], C.ink[2], C.ink[3], 0.08, 1)
-  ui.Dummy(0, 3 * s)
-end
-
-local function previewStatus(state)
+  W.Heading("Other versions")
   ui.PushFont(T.font.small)
-  ui.TextWrapped("Experimental: asks the server for one tier; an extra item window may appear and stay open.")
-  if state.status then ui.TextWrapped(state.status) end
+  ui.TextWrapped("Opens a separate item window.")
+  local gap, total = 6 * s, 0
+  local items = {}
+  for t = 0, 2 do
+    if t ~= tier then
+      local label = VERSION_TIERS[t + 1]
+      local bw = math.max(60 * s, T.TextSize(label, T.font.small) + 16 * s)
+      items[#items + 1] = { tier = t, label = label, width = bw }
+      total = total + bw + (#items > 1 and gap or 0)
+    end
+  end
+  local x, y = ui.GetCursorScreenPos()
+  local height = 18 * s
+  local bottom = y
+  if total > width then
+    -- narrow: one button per row, still wrapped in the window
+    for _, item in ipairs(items) do
+      local bw = math.min(item.width, width)
+      if T.Button("##itemversion" .. item.tier, x, bottom, x + bw, bottom + height, s, item.label,
+          { enabled = true }) then
+        requestVersion(win, sourceId, base, item.tier)
+      end
+      bottom = bottom + height + 4 * s
+    end
+  else
+    local bx = x
+    for _, item in ipairs(items) do
+      if T.Button("##itemversion" .. item.tier, bx, y, bx + item.width, y + height, s, item.label,
+          { enabled = true }) then
+        requestVersion(win, sourceId, base, item.tier)
+      end
+      bx = bx + item.width + gap
+    end
+    bottom = y + height
+  end
+  ui.SetCursorScreenPos(x, bottom + 2 * s)
+  status = versionStatus[win]
+  if status then ui.TextWrapped(status.text) end
   ui.PopFont()
 end
 
@@ -505,34 +429,13 @@ local function body(win, w, h, s)
   local instance = tonumber(win:match("#(%d+)$")) or 1
   local plugin = eq.Plugin("script:qol")
   local data = eq.DisplayItemData and eq.DisplayItemData(instance)
-  local state = previews[win]
-  if state and (type(data) ~= "table" or data.id ~= state.originId) then
-    previews[win] = nil
-    state = nil
-  end
-  if type(data) == "table" then
-    local tier, base = previewTier(data.id)
-    if tier and previewEnabled(plugin) then
-      if not state then
-        state = { originId = data.id, sourceTier = tier, base = base }
-        previews[win] = state
-      else
-        state.sourceTier, state.base = tier, base
-      end
-      pollPreview(state)
-    elseif state then
-      previews[win] = nil
-      state = nil
-    end
-  end
-  local snapshot = state and state.snapshot or nil
 
   local tex, u0, v0, u1, v1 = eq.ChildArt(win, "IconButton", "decal")
   local mod = trim(W.Text(win, "IDW_ModButtonLabel"))
   local descRaw = W.Text(win, "ItemDescription")
   local item = readItem(win, mod, descRaw, tex, u0, v0)
   local lines = item.lines
-  -- header: the original item's icon and name, annotated when a previewed version supplies the body
+  -- header: this window's item icon and name, always read live
   local x, y = ui.GetCursorScreenPos()
   local icon = 44 * s
   if tex == false then tex = nil end
@@ -540,14 +443,10 @@ local function body(win, w, h, s)
   ui.SetCursorScreenPos(x, y)
   local iconClicked = ui.InvisibleButton("##linkicon", icon, icon)
   T.HoverFx(x, y, x + icon, y + icon, s, 7)
-  if snapshot then
-    if ui.IsItemHovered() then ui.SetTooltip("Preview: chat linking is disabled.") end
-  else
-    -- the stock window's icon button: a click links the item into the chat window you last used (or the one set to
-    -- Always Chat Here)
-    if iconClicked then eq.ClickChild(win, "IconButton", "left") end
-    if ui.IsItemHovered() then ui.SetTooltip("Click to link this item in chat") end
-  end
+  -- the stock window's icon button: a click links the item into the chat window you last used (or the one set to
+  -- Always Chat Here)
+  if iconClicked then eq.ClickChild(win, "IconButton", "left") end
+  if ui.IsItemHovered() then ui.SetTooltip("Click to link this item in chat") end
   local name = lines[1] or { eq.WindowTitle(win) or "", C.text }
   local tx = x + icon + 10 * s
   ui.SetCursorScreenPos(tx, y)
@@ -556,18 +455,10 @@ local function body(win, w, h, s)
   ui.TextColored(name[2][1], name[2][2], name[2][3], 1, trim(name[1]))
   ui.PopTextWrapPos()
   ui.PopFont()
-  if snapshot then
-    local previewY = select(2, ui.GetCursorScreenPos()) + 2 * s
-    local _, previewH = T.TextSize("Ag", T.font.small)
-    T.Text(tx, previewY, PREVIEW_TIERS[snapshot.tier + 1] .. " preview", C.muted, T.font.small)
-    ui.SetCursorScreenPos(tx, previewY + previewH)
-  end
   if ui.IsItemHovered() then
     ui.SetTooltip("Green: you can equip it.  Red: you cannot.  Purple: only the prestige check stops you.")
   end
-  local flagText
-  if snapshot and snapshot.lines[2] then flagText = trim(snapshot.lines[2][1])
-  else flagText = lines[2] and trim(lines[2][1]) or "" end
+  local flagText = lines[2] and trim(lines[2][1]) or ""
   if flagText ~= "" then
     ui.SetCursorScreenPos(tx, select(2, ui.GetCursorScreenPos()) + 2 * s)
     flags(flagText, s, w - icon - 10 * s)
@@ -578,7 +469,7 @@ local function body(win, w, h, s)
   -- the rest scrolls
   ui.BeginChild("##idbody", 0, 0, false)
   local cw = ui.GetContentRegionAvail()
-  local info = snapshot and snapshot.info or item.info
+  local info = item.info
   if #info > 0 then
     local capW = 0
     for _, r in ipairs(info) do capW = math.max(capW, T.TextSize(r[1], T.font.small)) end
@@ -596,15 +487,12 @@ local function body(win, w, h, s)
       ui.SetCursorScreenPos(rx, ny + 1 * s)
     end
   end
-  local cols = snapshot and snapshot.cols or item.cols
+  local cols = item.cols
   if #cols > 0 then
-    if state then previewHeading(state, "Stats", cw, s) else W.Heading("Stats") end
+    W.Heading("Stats")
     statGrid(cols, s, cw)
-  elseif state then
-    previewHeading(state, "Preview", cw, s)
   end
-  if state then previewStatus(state) end
-  if not snapshot and mod ~= "" and eq.ChildShown(win, "IDW_ModButton") ~= false then
+  if mod ~= "" and eq.ChildShown(win, "IDW_ModButton") ~= false then
     -- the window's Modified button: its label says which values the grid shows
     ui.Dummy(0, 2 * s)
     local _, changed = ui.Checkbox("Modified values##mod", mod:lower() == "modified")
@@ -617,31 +505,21 @@ local function body(win, w, h, s)
         .. "recommended level lowers them).")
     end
   end
-  if snapshot then
-    if snapshot.sockets then
-      W.Heading("Augments")
-      ui.PushFont(T.font.small)
-      ui.TextWrapped("Preview without augments: augment actions are disabled while previewing.")
-      ui.PopFont()
-    end
-  else
-    sockets(win, s, cw)
-  end
-  local shownDesc = snapshot and snapshot.desc or descRaw
-  if trim(shownDesc) ~= "" then
+  sockets(win, s, cw)
+  if trim(descRaw) ~= "" then
     W.Heading("Description")
     ui.PushFont(T.font.small)
-    description(win, shownDesc, cw, snapshot and false)
+    description(win, descRaw, cw)
     ui.PopFont()
   end
-  local shownData = snapshot and snapshot.data or data
-  local extra = plugin and shownData and plugin.item_info(shownData)
+  local extra = plugin and data and plugin.item_info(data)
   if extra then
     W.Heading("Additional information")
     ui.PushFont(T.font.small)
     ui.TextWrapped(extra)
     ui.PopFont()
   end
+  if type(data) == "table" then versionControls(win, data.id, plugin, s, cw) end
   ui.Dummy(0, 4 * s)
   ui.EndChild()
 end
@@ -659,11 +537,7 @@ for i = 1, INSTANCES do
   }
   local function draw(x, y, w, h, s) body(window, w, h, s) end
   ui.window(title, function()
-    if not eq.InGame() then
-      clearPreviews()
-      return
-    end
-    if eq.WindowShown and not eq.WindowShown(window) then previews[window] = nil end
+    if not eq.InGame() then return end
     hud.Dialog(window, title, opts, draw)
   end)
 end

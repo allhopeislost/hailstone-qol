@@ -1,12 +1,12 @@
--- Item display custom-client contract and the experimental tier preview.
+-- Item display custom-client contract and the Other versions item windows.
 local realDofile = dofile
 local windows, displays, windowText, windowShown, titles = {}, {}, {}, {}, {}
-local buttons, texts, wrapped, colored, headings, clicks = {}, {}, {}, {}, {}, {}
-local stmlLinks, drawLinks, stmlRaws, infoRecords = {}, {}, {}, {}
+local buttons, texts, wrapped, colored, headings, tooltips, clicks = {}, {}, {}, {}, {}, {}, {}
+local stmlLinks, drawLinks, stmlRaws, infoRecords, dataReads = {}, {}, {}, {}, {}
 local requested, requestCalls = {}, 0
 local now, width, invisibleClick, hovered, checkboxClick, tierClick = 10, 380, false, false, false, nil
-local pluginAvailable, requestImpl = true, nil
-local previewEnabled = true
+local pluginAvailable, withAvailability, requestImpl = true, true, nil
+local previewEnabled, versionsAvailable = true, true
 
 local color = {1, 1, 1, 1}
 local T = {
@@ -18,7 +18,7 @@ local T = {
   Icon = function() end,
   HoverFx = function() end,
   Button = function(id, x0, y0, x1, y1, s, label, opts)
-    buttons[#buttons + 1] = {id = id, label = label, primary = opts and opts.primary,
+    buttons[#buttons + 1] = {id = id, x0 = x0, y0 = y0, label = label,
       enabled = opts and opts.enabled}
     if tierClick == label and not (opts and opts.enabled == false) then
       tierClick = nil
@@ -26,6 +26,8 @@ local T = {
     end
     return false
   end,
+  RightPressStart = function() end,
+  RightPressFrame = function() end,
 }
 local function winName(instance)
   return instance == 1 and 'ItemDisplayWindow' or ('ItemDisplayWindow#' .. instance)
@@ -67,11 +69,14 @@ eq = {
     return t and t[id]
   end,
   WindowTitle = function(win) return titles[win] or 'Item Display' end,
-  DisplayItemData = function(instance) return displays[instance] end,
+  DisplayItemData = function(instance)
+    dataReads[instance] = (dataReads[instance] or 0) + 1
+    return displays[instance]
+  end,
   Plugin = function(name)
     assert(name == 'script:qol')
     if not pluginAvailable then return nil end
-    return {
+    local plugin = {
       item_info = function(record)
         infoRecords[#infoRecords + 1] = record
         return require('info').item(record)
@@ -79,6 +84,10 @@ eq = {
       preview_enabled = function() return previewEnabled end,
       request_item_preview = requestImpl,
     }
+    if withAvailability then
+      plugin.item_versions_available = function() return versionsAvailable end
+    end
+    return plugin
   end,
   ClickChild = function(win, id, phase) clicks[#clicks + 1] = {win, id, phase} end,
   StmlLink = function(win, id, message, data)
@@ -92,6 +101,10 @@ ui = {
   SetCursorScreenPos = function() end,
   InvisibleButton = function(id) return invisibleClick and id == '##linkicon' end,
   IsItemHovered = function() return hovered end,
+  GetItemID = function() return 0 end,
+  IsItemClicked = function() return false end,
+  Mouse = {Left = 1, Right = 2},
+  GetIO = function() return {} end,
   PushFont = function() end,
   PopFont = function() end,
   PushTextWrapPos = function() end,
@@ -99,13 +112,15 @@ ui = {
   TextColored = function(_, _, _, _, text) colored[#colored + 1] = text end,
   BeginChild = function() end,
   EndChild = function() end,
+  BeginGroup = function() end,
+  EndGroup = function() end,
   GetContentRegionAvail = function() return width end,
   Dummy = function() end,
   SameLine = function() end,
   DrawLine = function() end,
   DrawRect = function() end,
   DrawRectFilled = function() end,
-  SetTooltip = function(text) headings[#headings + 1] = text end,
+  SetTooltip = function(text) tooltips[#tooltips + 1] = text end,
   TextWrapped = function(text) wrapped[#wrapped + 1] = text end,
   Checkbox = function()
     if checkboxClick then
@@ -152,12 +167,12 @@ end
 
 local function load()
   windows, displays, windowText, windowShown, titles = {}, {}, {}, {}, {}
-  buttons, texts, wrapped, colored, headings, clicks = {}, {}, {}, {}, {}, {}
-  stmlLinks, drawLinks, stmlRaws, infoRecords = {}, {}, {}, {}
+  buttons, texts, wrapped, colored, headings, tooltips, clicks = {}, {}, {}, {}, {}, {}, {}
+  stmlLinks, drawLinks, stmlRaws, infoRecords, dataReads = {}, {}, {}, {}, {}
   requested, requestCalls = {}, 0
   now, width, invisibleClick, hovered, checkboxClick, tierClick = 10, 380, false, false, false, nil
-  pluginAvailable = true
-  previewEnabled = true
+  pluginAvailable, withAvailability = true, true
+  previewEnabled, versionsAvailable = true, true
   requestImpl = function(id)
     requestCalls = requestCalls + 1
     requested[#requested + 1] = id
@@ -167,8 +182,8 @@ local function load()
 end
 
 local function frame(name)
-  buttons, texts, wrapped, colored, headings, clicks = {}, {}, {}, {}, {}, {}
-  stmlLinks, drawLinks, stmlRaws, infoRecords = {}, {}, {}, {}
+  buttons, texts, wrapped, colored, headings, tooltips, clicks = {}, {}, {}, {}, {}, {}, {}
+  stmlLinks, drawLinks, stmlRaws, infoRecords, dataReads = {}, {}, {}, {}, {}
   windows[name or 'Item Display']()
 end
 
@@ -176,240 +191,215 @@ local function button(label)
   for _, b in ipairs(buttons) do if b.label == label then return b end end
 end
 
+local function buttonLabels()
+  local names = {}
+  for _, b in ipairs(buttons) do names[#names + 1] = b.label end
+  return names
+end
+
+local function assertButtons(expected)
+  local names = buttonLabels()
+  assert(#names == #expected, 'expected ' .. #expected .. ' version buttons, got ' .. table.concat(names, ', '))
+  for _, label in ipairs(expected) do
+    assert(button(label), 'missing version button: ' .. label)
+  end
+  return names
+end
+
 local function has(list, needle)
   return table.concat(list, '\n'):find(needle, 1, true) ~= nil
 end
 
-local function statuses() return table.concat(wrapped, '\n') end
-local function labels() return table.concat(texts, '\n') end
+local function indexOf(list, needle)
+  for i, value in ipairs(list) do
+    if value == needle then return i end
+  end
+end
 
--- Rendering alone must never ask the server, and the source tier starts highlighted.
+local function wrappedText() return table.concat(wrapped, '\n') end
+
+-- Rendering alone never requests anything; a Base item offers exactly its two other tiers.
 load()
-item(1, 51907, 'Original Base', 'Live base description', {mod = 'Modified'})
+item(1, 51907, 'Original Base', 'Live base description',
+  {mod = 'Modified', lines = {'Class: WAR'}, sockets = true})
+local baseData = displays[1]
+hovered = true
 frame()
-assert(requestCalls == 0, 'rendering must not request a preview')
-assert(#buttons == 3 and button('Base').primary and not button('Enchanted').primary)
-assert(has(texts, 'Stats'), 'the tier buttons sit by the Stats heading')
-assert(has(wrapped, 'extra item window'), 'the experimental status names the extra window')
-assert(infoRecords[1] and infoRecords[1].id == 51907, 'the original item keeps its own additional information')
+hovered = false
+assert(requestCalls == 0, 'rendering must not request an item version')
+assertButtons({'Enchanted', 'Legendary'})
+assert(not button('Base'), 'the current tier is not offered')
+assert(indexOf(headings, 'Additional information') < indexOf(headings, 'Other versions'),
+  'Other versions follows Additional information')
+assert(has(wrapped, 'Opens a separate item window.'))
+assert(not has(wrapped, 'Asked the client'), 'rendering makes no success claim')
+assert(not has(texts, 'Enchanted preview') and not has(wrapped, 'preview'))
+assert(infoRecords[1] == baseData and infoRecords[1].id == 51907)
+assert(has(colored, 'Original Base'))
+assert(has(headings, 'Stats') and has(texts, 'AC'))
+assert(has(tooltips, 'Click to link this item in chat'), 'the live icon tooltip stays')
+assert(dataReads[1] == 1 and not dataReads[5], 'only this display is read')
+assert(#clicks == 0, 'rendering clicks nothing')
 
--- A click asks for exactly the requested tier's id; nothing switches until a matching native window is read.
+-- A click asks for exactly the selected real item id, once.
 tierClick = 'Enchanted'
 frame()
 assert(requestCalls == 1 and requested[1] == 1051907)
-assert(not has(texts, 'Enchanted preview'), 'the annotation waits for the response')
-assert(button('Base').primary, 'the source choice stays highlighted while loading')
-assert(has(wrapped, 'Requesting Enchanted'))
-item(5, 1051907, 'Target Enchanted',
-  '<a WndNotify="27,0^5">Enchanted effect</a> text',
-  {lines = {'Class: WAR'}, ac = '25', sockets = true})
-now = now + 0.1
-frame()
-assert(not has(texts, 'Enchanted preview'), 'the poll respects its modest cadence')
-now = now + 0.3
+assert(has(wrapped, 'Asked the client to open the Enchanted item window.'))
+assert(not has(wrapped, 'opened'), 'inspect_item has no acknowledgement, so no window is claimed')
+assert(requestCalls == 1 and #requested == 1)
+
+-- The original window, its data and its live controls are unchanged by requesting a version.
+assert(displays[1] == baseData and infoRecords[1] == baseData and infoRecords[1].id == 51907)
+assert(has(colored, 'Original Base') and not has(colored, 'Enchanted'))
+assert(has(texts, 'AC') and has(texts, '10'))
+assertButtons({'Enchanted', 'Legendary'})
+assert(#clicks == 0, 'requesting a version dispatches no icon, socket or Modified clicks')
 invisibleClick = true
 frame()
 invisibleClick = false
-assert(has(texts, 'Enchanted preview'), 'the original header names the preview tier')
-assert(button('Enchanted').primary and not button('Base').primary)
-assert(requestCalls == 1, 'a matching response must not be requested again')
-assert(has(colored, 'Original Base'), 'the original name stays in the header')
-assert(infoRecords[1] and infoRecords[1].id == 1051907, 'metadata comes from the selected version')
-assert(has(wrapped, 'Preview without augments'), 'augment sockets are not interactive in a preview')
-assert(#clicks == 0, 'a preview dispatches no icon, socket or Modified clicks')
-assert(#stmlLinks == 0, 'a preview description never follows a link into a native window')
-assert(drawLinks[#drawLinks] == nil, 'the preview description is drawn without a link handler')
-
--- Repeating the same choice does not request the same window again.
-tierClick = 'Enchanted'
-frame()
-assert(requestCalls == 1 and has(texts, 'Enchanted preview'))
-
--- The snapshot is a copy: closing the native response window does not damage what is shown.
-displays[5], windowText[winName(5)], windowShown[winName(5)] = nil, nil, nil
-frame()
-assert(has(texts, 'Enchanted preview') and infoRecords[1].id == 1051907)
-
--- Another item display is its own state; it is not previewed by the first window.
-item(2, 777, 'Unrelated Item', 'Its own description', {ac = '3'})
-frame('Item Display 2')
-assert(button('Base') and button('Base').primary)
-assert(infoRecords[1].id == 777)
-assert(requestCalls == 1, 'an unrelated display must not request the preview')
-frame()
-assert(has(texts, 'Enchanted preview'), 'the first display keeps its own preview')
-
--- Returning to the source tier clears the snapshot and restores the live controls.
-tierClick = 'Base'
-frame()
-assert(requestCalls == 1, 'returning to the source is local, not another request')
-frame()
-assert(button('Base').primary and not has(texts, 'Enchanted preview'))
-assert(type(drawLinks[#drawLinks]) == 'function', 'the live description links to its own window again')
-invisibleClick = true
-clicks = {}
-frame()
-invisibleClick = false
-assert(#clicks == 1 and clicks[1][2] == 'IconButton', 'the live icon links in chat again')
+assert(#clicks == 1 and clicks[1][2] == 'IconButton', 'the live icon still links in chat')
 checkboxClick = true
 clicks = {}
 frame()
-assert(#clicks == 1 and clicks[1][2] == 'IDW_ModButton', 'the live Modified control is usable again')
+assert(#clicks == 1 and clicks[1][2] == 'IDW_ModButton', 'the live Modified control still works')
+assert(type(drawLinks[#drawLinks]) == 'function', 'the live description still follows its links')
+assert(#stmlLinks == 0)
+assert(has(colored, 'Original Base'))
 
--- A different original item clears the state; an Enchanted source starts on Enchanted.
-item(1, 1051907, 'Now Enchanted', 'Enchanted live description', {ac = '20'})
+-- A separate native window is independent: it shows its own item and its own other tiers.
+item(5, 1051907, 'Enchanted Item', 'Enchanted live description',
+  {lines = {'Class: WAR'}, ac = '25'})
+local enchantedData = displays[5]
+frame('Item Display 5')
+assertButtons({'Base', 'Legendary'})
+assert(not button('Enchanted'), 'an Enchanted window does not offer Enchanted')
+assert(infoRecords[1] == enchantedData and infoRecords[1].id == 1051907)
+assert(has(colored, 'Enchanted Item'))
+assert(has(wrapped, 'Opens a separate item window.'))
+assert(requestCalls == 1, 'opening a separate window requests nothing by itself')
 frame()
-assert(not has(texts, 'Enchanted preview'))
-assert(button('Enchanted').primary and not button('Base').primary)
-assert(infoRecords[1].id == 1051907)
-assert(requestCalls == 1, 'changing the original item must not request anything')
+assert(displays[1] == baseData and infoRecords[1] == baseData)
+assert(has(colored, 'Original Base'), 'the first window keeps its own live content')
+assertButtons({'Enchanted', 'Legendary'})
+assert(requestCalls == 1, 'the windows do not share or replay requests')
 
--- Exact target ids from every source tier.
-local function targetFor(sourceId, label, expected)
+-- Every source tier offers the two other tiers and requests their exact ids.
+local function targetFor(sourceId, sourceLabel, label, expected)
   load()
-  item(1, sourceId, 'Source', 'Source description')
+  item(1, sourceId, 'Source ' .. sourceLabel, 'Source description')
   frame()
   assert(requestCalls == 0)
+  local expectedLabels = {}
+  for _, name in ipairs({'Base', 'Enchanted', 'Legendary'}) do
+    if name ~= sourceLabel then expectedLabels[#expectedLabels + 1] = name end
+  end
+  assertButtons(expectedLabels)
+  assert(not button(sourceLabel), 'the source tier is never offered')
   tierClick = label
   frame()
   assert(requestCalls == 1 and requested[1] == expected,
-    ('%s from %d should request %s'):format(label, sourceId, tostring(expected)))
+    ('%s from %s should request %s'):format(label, sourceLabel, tostring(expected)))
 end
-targetFor(51907, 'Enchanted', 1051907)
-targetFor(51907, 'Legendary', 2051907)
-targetFor(1051907, 'Base', 51907)
-targetFor(1051907, 'Legendary', 2051907)
-targetFor(2051907, 'Base', 51907)
-targetFor(2051907, 'Enchanted', 1051907)
+targetFor(51907, 'Base', 'Enchanted', 1051907)
+targetFor(51907, 'Base', 'Legendary', 2051907)
+targetFor(1051907, 'Enchanted', 'Base', 51907)
+targetFor(1051907, 'Enchanted', 'Legendary', 2051907)
+targetFor(2051907, 'Legendary', 'Base', 51907)
+targetFor(2051907, 'Legendary', 'Enchanted', 1051907)
 
--- Choosing the source tier never asks the server.
-load()
-item(1, 2051907, 'Legendary Source', 'Live legendary')
-frame()
-assert(button('Legendary').primary)
-tierClick = 'Legendary'
-frame()
-assert(requestCalls == 0)
-assert(type(drawLinks[#drawLinks]) == 'function')
-
--- An unrelated id in the display list is not the requested item, so the preview times out unchanged.
-load()
-item(1, 51907, 'Original Base', 'Live base description')
-frame()
-tierClick = 'Enchanted'
-frame()
-assert(requested[1] == 1051907)
-item(2, 999, 'Other Item', 'Other description')
-now = now + 0.3
-frame()
-assert(not has(texts, 'Enchanted preview'), 'a different id must not be read as the response')
-assert(button('Base').primary)
-now = now + 6
-frame()
-assert(has(wrapped, 'No matching item window'), 'the timeout is named')
-assert(button('Base').primary and not has(texts, 'Enchanted preview'))
-assert(infoRecords[1].id == 51907, 'the original content stays coherent after a timeout')
-
--- A later failure leaves an earlier successful preview and its selection in place.
-load()
-item(1, 51907, 'Original Base', 'Live base description')
-frame()
-tierClick = 'Enchanted'
-frame()
-item(5, 1051907, 'Target Enchanted', 'Enchanted effect', {lines = {'Class: WAR'}})
-now = now + 0.3
-frame()
-assert(button('Enchanted').primary and infoRecords[1].id == 1051907)
-requestImpl = function(id)
-  requestCalls = requestCalls + 1
-  requested[#requested + 1] = id
-  error('later request failed')
-end
-tierClick = 'Legendary'
-frame()
-assert(has(wrapped, 'later request failed'))
-assert(button('Enchanted').primary and not button('Legendary').primary)
-assert(has(texts, 'Enchanted preview') and infoRecords[1].id == 1051907,
-  'a failed request must not replace coherent current content')
-
--- Paths that cannot start the experiment fail visibly, not silently.
-load()
-item(1, 51907, 'Original Base', 'Live base description')
-frame()
-requestImpl = nil
-tierClick = 'Enchanted'
-frame()
-assert(has(wrapped, 'request_item_preview'), 'a missing API is named')
-assert(button('Base').primary and infoRecords[1].id == 51907)
-
-load()
-item(1, 51907, 'Original Base', 'Live base description')
-frame()
-pluginAvailable = false
-tierClick = 'Enchanted'
-frame()
-assert(has(wrapped, 'Experimental preview unavailable'))
-assert(#buttons == 3 and button('Base').primary)
-
-load()
-item(1, 51907, 'Original Base', 'Live base description')
-frame()
-requestImpl = function(id)
-  requestCalls = requestCalls + 1
-  requested[#requested + 1] = id
-  error('preview denied')
-end
-tierClick = 'Enchanted'
-frame()
-assert(has(wrapped, 'preview denied'))
-assert(button('Base').primary and not has(texts, 'Enchanted preview'))
-
-load()
-item(1, 51907, 'Original Base', 'Live base description')
-frame()
-requestImpl = function(id)
-  requestCalls = requestCalls + 1
-  requested[#requested + 1] = id
-  return {ok = false, error = 'permission refused'}
-end
-tierClick = 'Enchanted'
-frame()
-assert(has(wrapped, 'Preview refused') and has(wrapped, 'permission refused'))
-assert(button('Base').primary)
-
--- Ids outside the three known tiers get no tier buttons and no request.
-for _, id in ipairs({4000000, 1000000, 2000000, 0}) do
+-- Ids outside the known tier ranges get no controls and never a request.
+for _, id in ipairs({4000000, 1000000, 2000000, 3000000, 0, 1.5}) do
   load()
   item(1, id, 'Not tiered', 'No tiers', {stats = false})
   frame()
   assert(#buttons == 0, 'an id outside the tier ranges has no buttons')
+  assert(not has(headings, 'Other versions'))
   assert(requestCalls == 0)
 end
 
--- While the item_preview option is off, no tier buttons are drawn and the
--- plain Stats heading stays; re-enabling restores the buttons.
+-- The existing item_preview option disables the controls; re-enabling restores them.
 load()
-previewEnabled = false
+versionsAvailable = false
 item(1, 51907, 'Original Base', 'Live base description')
 frame()
-assert(#buttons == 0, 'a disabled preview has no tier buttons')
-assert(has(headings, 'Stats'), 'the plain Stats heading stays without a preview')
+assert(#buttons == 0, 'a disabled option has no version buttons')
+assert(not has(headings, 'Other versions'))
+assert(has(headings, 'Stats'), 'the plain Stats heading stays')
 assert(requestCalls == 0)
 tierClick = 'Enchanted'
 frame()
-assert(requestCalls == 0, 'no buttons means no click can request a preview')
-previewEnabled = true
+assert(requestCalls == 0, 'no buttons means no click can request a version')
+versionsAvailable = true
 tierClick = nil
 frame()
-assert(#buttons == 3 and button('Base').primary, 're-enabling restores the tier buttons')
+assertButtons({'Enchanted', 'Legendary'})
+assert(has(headings, 'Other versions'))
 
--- Disabling mid-preview clears the state and its buttons.
-tierClick = 'Enchanted'
+-- Older content with only preview_enabled still works; a missing plugin fails gracefully.
+load()
+withAvailability = false
+item(1, 51907, 'Original Base', 'Live base description')
 frame()
-assert(requestCalls == 1 and requested[1] == 1051907)
+assertButtons({'Enchanted', 'Legendary'})
 previewEnabled = false
 frame()
-assert(#buttons == 0 and not has(texts, 'Enchanted preview'), 'disabling clears a running preview')
-assert(has(headings, 'Stats'))
+assert(#buttons == 0)
+previewEnabled = true
+load()
+pluginAvailable = false
+item(1, 51907, 'Original Base', 'Live base description')
+frame()
+assert(#buttons == 0, 'without a QoL plugin nothing is offered')
+assert(not has(headings, 'Additional information') and not has(headings, 'Other versions'))
+assert(requestCalls == 0)
+
+-- Failures after a click are shown in a small status and never change this window.
+local function failedClick(setup, fragment)
+  load()
+  item(1, 51907, 'Original Base', 'Live base description', {ac = '7'})
+  frame()
+  requestImpl = setup
+  tierClick = 'Legendary'
+  frame()
+  assert(has(wrapped, fragment), 'expected a status containing: ' .. fragment)
+  assert(infoRecords[1].id == 51907 and has(colored, 'Original Base'))
+  assert(has(texts, '7'), 'the original stats stay live')
+  assertButtons({'Enchanted', 'Legendary'})
+  assert(requestCalls == 0 or requested[1] == 2051907)
+end
+failedClick(nil, 'no request_item_preview API')
+failedClick(function() error('client denied the request') end, 'client denied the request')
+failedClick(function() return {ok = false, error = 'permission refused'} end, 'permission refused')
+failedClick(function() return nil end, 'no result from QoL')
+
+-- A status belongs to its item: changing what this window shows clears it.
+load()
+item(1, 51907, 'Original Base', 'Live base description')
+frame()
+tierClick = 'Enchanted'
+frame()
+assert(has(wrapped, 'Asked the client to open the Enchanted item window.'))
+item(1, 51908, 'Different Base', 'Another description')
+frame()
+assert(not has(wrapped, 'Asked the client'), 'a different item clears the old status')
+assertButtons({'Enchanted', 'Legendary'})
+
+-- Narrow windows put each button on its own row instead of clipping it.
+load()
+width = 100
+item(1, 51907, 'Original Base', 'Live base description')
+frame()
+assertButtons({'Enchanted', 'Legendary'})
+assert(button('Legendary').y0 > button('Enchanted').y0,
+  'narrow layouts wrap the two buttons onto separate rows')
+assert(has(wrapped, 'Opens a separate item window.'))
+
+-- Wide windows keep the two buttons on one row.
+load()
+width = 380
+item(1, 51907, 'Original Base', 'Live base description')
+frame()
+assert(button('Legendary').y0 == button('Enchanted').y0)
 
 print('item display custom client contract: ok')

@@ -7,14 +7,13 @@ end
 local settings = require('settings').new(mq, nil, reportSaveError)
 
 local features = {
-  {name = 'nameplate_level', label = 'NPC nameplate levels'},
-  {name = 'target_level', label = 'Target levels'},
-  {name = 'npc_class', label = 'NPC classes'},
+  {name = 'target_level', label = 'Show target Levels'},
+  {name = 'npc_class', label = 'Show target class'},
   {name = 'spell_info', label = 'Additional spell information'},
   {name = 'item_info', label = 'Additional item information'},
-  {name = 'item_preview', label = 'Item tier previews'},
+  {name = 'item_preview', label = 'Item version windows'},
   {name = 'map_target_line', label = 'Map target line'},
-  {name = 'map_npcs', label = 'NPCs on the map'},
+  {name = 'map_npcs', label = 'Show all NPCs on the map'},
 }
 
 if hs.option then
@@ -92,7 +91,7 @@ if hs.hooks then
   hs.hooks{
     nameplate = function(spawn, text)
       if not spawn or not spawn.npc or spawn.corpse or type(text) ~= 'string' then return nil end
-      local suffix = detail(spawn, settings.get('nameplate_level'), settings.get('npc_class'))
+      local suffix = detail(spawn, settings.get('target_level'), settings.get('npc_class'))
       if suffix == '' then return nil end
       return text .. suffix
     end,
@@ -111,16 +110,12 @@ hs.ui_function('item_info', function(item)
   return info.item(item)
 end)
 
--- Whether the experimental tier preview may show its buttons. The item
--- display asks this before drawing them; older content without this
--- function keeps the previous always-on behavior.
+-- Whether item version controls may be drawn. The item display asks this before
+-- showing them; older content without this function uses preview_enabled.
 hs.ui_function('preview_enabled', function()
   return settings.get('item_preview') == true
 end)
 
--- Experimental read-only tier preview. The UI asks for exactly one item id per click; this function only
--- checks that the request is well formed and that this really is Project Triune, then asks the client for
--- that item's native display. It does not wait for, find, or alter the response window.
 local function projectTriune(server)
   if type(server) ~= 'table' then return false end
   for _, key in ipairs({'world', 'name'}) do
@@ -134,14 +129,34 @@ local function projectTriune(server)
   return false
 end
 
+-- Lightweight eligibility for the Other versions controls. The option is checked every time; the
+-- shared server read is cached for a second so six item windows do not repeat it every frame, while
+-- a zone change or logout is still reflected promptly. A missing or failing hs.server hides the
+-- controls instead of guessing the server.
+local versionsCache = {}
+hs.ui_function('item_versions_available', function()
+  if not settings.get('item_preview') or type(hs.server) ~= 'function' then
+    versionsCache.at = nil
+    return false
+  end
+  local now = os.time()
+  if versionsCache.at == now then return versionsCache.ok end
+  local read, server = pcall(hs.server)
+  versionsCache.at, versionsCache.ok = now, read and projectTriune(server) or false
+  return versionsCache.ok
+end)
+
+-- One item version request per click. The UI asks for exactly one item id; this function only checks
+-- that the request is well formed and that this really is Project Triune, then asks the client to
+-- open that item's own native window. It does not wait for, find, or alter any item window.
 hs.ui_function('request_item_preview', function(itemId)
   if not settings.get('item_preview') then
     return {ok = false, kind = 'disabled',
-      error = 'Tier previews are turned off; enable them under Options → Plugins.'}
+      error = 'Item version windows are turned off; enable them under Options → Plugins.'}
   end
   if type(itemId) ~= 'number' or itemId ~= itemId or itemId == math.huge or itemId == -math.huge
       or itemId % 1 ~= 0 or itemId < 1 or itemId > 4294967295 then
-    return {ok = false, kind = 'invalid_id', error = 'Invalid item id for a preview request.'}
+    return {ok = false, kind = 'invalid_id', error = 'Invalid item id for an item version request.'}
   end
   if type(hs.server) ~= 'function' then
     return {ok = false, kind = 'server',
@@ -159,16 +174,16 @@ hs.ui_function('request_item_preview', function(itemId)
   if not projectTriune(server) then
     local name = server.world or server.name or server.host or 'unknown'
     return {ok = false, kind = 'server',
-      error = "This tier preview is a Project Triune experiment; current server '" .. tostring(name)
+      error = "Item version windows are for Project Triune; current server '" .. tostring(name)
         .. "' is not recognized."}
   end
   if type(hs.inspect_item) ~= 'function' then
     return {ok = false, kind = 'missing_api',
-      error = 'hs.inspect_item is unavailable in this client, so no preview can be requested.'}
+      error = 'hs.inspect_item is unavailable in this client, so no item window can be requested.'}
   end
   local sent, err = pcall(hs.inspect_item, itemId)
   if not sent then
-    return {ok = false, kind = 'refused', error = 'The preview request was refused: ' .. tostring(err)}
+    return {ok = false, kind = 'refused', error = 'The item window request was refused: ' .. tostring(err)}
   end
   return {ok = true, id = itemId}
 end)
