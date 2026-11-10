@@ -1,10 +1,10 @@
 local hs = require('hailstone')
 local mq = require('mq')
-local info = require('info')
+local info = require('core.info')
 local function reportSaveError(err)
   hs.chat('QoL: could not save settings: ' .. tostring(err), 15)
 end
-local settings = require('settings').new(mq, nil, reportSaveError)
+local settings = require('core.settings').new(mq, nil, reportSaveError)
 
 local function finite(value)
   return type(value) == 'number' and value == value and value > -math.huge and value < math.huge

@@ -1,4 +1,4 @@
-local Settings = require('settings')
+local Settings = require('core.settings')
 
 local saved
 local failSave = false

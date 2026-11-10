@@ -79,7 +79,7 @@ eq = {
     local plugin = {
       item_info = function(record)
         infoRecords[#infoRecords + 1] = record
-        return require('info').item(record)
+        return require('core.info').item(record)
       end,
       request_item_preview = requestImpl,
     }

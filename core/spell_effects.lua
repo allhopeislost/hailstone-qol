@@ -1,6 +1,6 @@
 -- Readable spell effects, table driven.
 --
--- Data: spell_spa_names.lua (generated: every SPA id -> name) plus the KIND table below, which says how an SPA's
+-- Data: core/spell_spa_names.lua (generated: every SPA id -> name) plus the KIND table below, which says how an SPA's
 -- numbers are shown. SPAs without a KIND fall back to a named raw line ("Slot 2: Root (SPA 99, base ...)"), so
 -- nothing is lost and nothing is guessed. To support another SPA, add it to KIND (and DISPLAY for a nicer name).
 --
@@ -17,7 +17,7 @@
 -- A scaling effect needs the lowest class level of the spell; without one it stays raw (no level is guessed).
 -- Values are spell-effect values, not character-sheet totals; an uncapped effect never shows a made-up cap.
 local M = {}
-local GENERATED = require('spell_spa_names')
+local GENERATED = require('core.spell_spa_names')
 
 local DISPLAY = {
   [0] = 'HP', [15] = 'Mana', [189] = 'Endurance', [79] = 'HP', [198] = 'Endurance', [358] = 'Mana',

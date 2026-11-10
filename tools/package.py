@@ -13,7 +13,7 @@ import tempfile
 
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = "0.2.5"
+VERSION = "0.2.6"
 
 # The manifest's capability ceiling. `commands` lets the dialogs' close box
 # (and Esc/menu Close) hide the game window; `actions` lets the displays'
@@ -23,13 +23,13 @@ CAPS = "read,ui,extend,commands,actions"
 
 # Keep this list explicit: the client package must not include tests, docs, this tool,
 # old packages, or generated manifests. `qol.lua` is user data in mq.configDir, not a
-# runtime file to package; `settings.lua` is the code that loads/saves it.
+# runtime file to package; `core/settings.lua` is the code that loads/saves it.
 RUNTIME_FILES = (
     "init.lua",
-    "info.lua",
-    "settings.lua",
-    "spell_effects.lua",
-    "spell_spa_names.lua",
+    "core/info.lua",
+    "core/settings.lua",
+    "core/spell_effects.lua",
+    "core/spell_spa_names.lua",
     "ui/modern/itemdisplay.lua",
     "ui/modern/maptargetline.lua",
     "ui/modern/spelldisplay.lua",

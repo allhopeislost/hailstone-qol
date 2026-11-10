@@ -2,8 +2,8 @@
 
 ## Scope and layout
 
-- `init.lua`, `info.lua`, `settings.lua`, `spell_effects.lua`, `spell_spa_names.lua` and `ui/modern/` are runtime
-  files. Only the Modern UI is supported; there is no Gamepad UI.
+- `init.lua` (the entry point), `core/` (settings, spell/item text, spell effects, generated SPA names) and
+  `ui/modern/` are runtime files. Only the Modern UI is supported; there is no Gamepad UI.
 - `tests/` contains local Lua checks. `tools/package.py` is release tooling; `README.md` documents player-facing
   behavior and release steps. Keep tests, docs, tooling, old ZIPs and generated manifests out of add-on packages.
 - Hailstone client source is reference material only. Do not modify the client checkout.

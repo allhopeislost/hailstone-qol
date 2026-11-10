@@ -1,4 +1,4 @@
-local info = require('info')
+local info = require('core.info')
 assert(info.spell(nil) == nil and info.item(nil) == nil)
 assert(info.spell_details(nil) == nil)
 

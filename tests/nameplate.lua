@@ -61,7 +61,7 @@ for _, case in ipairs({
   assert(nameplate(case[1], 'a rat') == case[2], case[2])
 end
 
-local Settings = require('settings')
+local Settings = require('core.settings')
 local stored = Settings.new({pickle = function() end}, function() return nil end)
 assert(stored.get('target_level') == true and stored.get('item_info') == true,
   'all supported features default to enabled')

@@ -1,5 +1,5 @@
-local fx = require('spell_effects')
-local info = require('info')
+local fx = require('core.spell_effects')
+local info = require('core.info')
 
 -- Missing input yields no rows, never a guessed level.
 assert(#fx.rows(nil) == 0 and #fx.rows(false) == 0 and #fx.rows(42) == 0)

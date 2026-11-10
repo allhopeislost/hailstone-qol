@@ -1,5 +1,5 @@
 local M = {}
-local spell_effects = require('spell_effects')
+local spell_effects = require('core.spell_effects')
 -- The playable class short names, indexed by the client's class id (1 WAR .. 16 BER); other ids (merchants,
 -- bankers, GM trainers) are not classes a player reads off a nameplate.
 M.classes = {'WAR', 'CLR', 'PAL', 'RNG', 'SHD', 'DRU', 'MNK', 'BRD',
