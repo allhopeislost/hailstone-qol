@@ -1,5 +1,18 @@
 # QoL add-on contributor notes
 
+Start here. What the add-on does and why: `docs/decisions.md`. What it needs from the client:
+`docs/client-api.md`. Do not reverse a decision without replacing its entry.
+
+## Working rules
+
+- Code, comments and docs are in English; chat with the user in Dutch.
+- Do not commit, push, publish or release unless asked. Never touch the client checkout or the signing key.
+- Never guess a client API or record field. Check `docs/client-api.md`; if it is not there or marked unverified,
+  say so, and prefer a small in-game check (print the table's keys) over assuming.
+- A change is done when `tools/check.sh` passes, a focused test covers it, `docs/decisions.md` and
+  `docs/client-api.md` are updated where they apply, and the README still matches the features.
+- Keep it cheap to maintain: no new switches, files or dependencies without a reason.
+
 ## Scope and layout
 
 - `init.lua` (the entry point), `core/` (settings, spell/item text, spell effects, generated SPA names) and
