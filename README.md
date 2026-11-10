@@ -1,7 +1,7 @@
 # Hailstone QoL
 
 Hailstone QoL is a Lua add-on for small quality-of-life details in Hailstone's **Modern UI**. The current release
-is **0.2.1**, published from the public GitHub add-on repository
+is **0.2.2**, published from the public GitHub add-on repository
 `https://github.com/allhopeislost/hailstone-qol`.
 
 ## Features
@@ -44,7 +44,8 @@ The map target line is a straight compass-style line only; it is not pathfinding
 Modern large map, with no minimap support. When there is no target, or the needed player/target position data is
 absent, the line is hidden. Map NPC marks are drawn by the client's own maps; a client without the `map_spawn`
 hook simply shows no extra NPCs. Hailstone's server rules can restrict the add-on's declared capabilities
-(`read`, `ui`, `extend`); relevant client APIs and server-provided data may also be unavailable.
+(`read`, `ui`, `extend`, `commands`, `actions`); relevant client APIs and server-provided data may also be
+unavailable. Updating from 0.2.1 asks the player to approve the added `commands`/`actions` permissions.
 
 Readable spell effects cover only SPA 1 (AC), 2 (attack), 4-10 (strength, dexterity, agility, stamina,
 intelligence, wisdom, charisma), 11 (haste/slow), 216 (accuracy) and 292 (strikethrough), with formulas
@@ -93,7 +94,7 @@ refusal.
 Install it from Hailstone's login-screen **Add-ons** panel: paste the repository link for the latest release, or a specific release's tag-page link. Inspect the add-on
 name/version and requested capabilities, then choose **Install**. The link forms are
 `https://github.com/allhopeislost/hailstone-qol` and
-`https://github.com/allhopeislost/hailstone-qol/releases/tag/v0.2.1`; use the repository or release/tag page, not a direct
+`https://github.com/allhopeislost/hailstone-qol/releases/tag/v0.2.2`; use the repository or release/tag page, not a direct
 asset or ZIP-download link. Hailstone's add-on manager requires a public GitHub
 repository/release to fetch the manifest and package. Branch links (`.../tree/<branch>`) are not supported:
 the package is published as a release asset, not as a file in the branch.
@@ -134,7 +135,7 @@ python3 tools/package.py --out /tmp/qol-release
 python3 tools/package.py --make-addon /path/to/Hailstone-dev/tools/make_addon.py --out /tmp/qol-release
 ```
 
-The helper builds version 0.2.1 packages and a generated release manifest in that output directory; it does not
+The helper builds version 0.2.2 packages and a generated release manifest in that output directory; it does not
 publish, sign, install or run the client. To cut a signed release, sign the generated manifest with
 `hailstone_sign sign <secret-key-file> <out>/hailstone-addon.txt` (key kept outside the repository), verify it,
 copy the signed manifest back to the repository root, and upload the manifest and ZIP as assets of the

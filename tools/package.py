@@ -13,7 +13,13 @@ import tempfile
 
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = "0.2.1"
+VERSION = "0.2.2"
+
+# The manifest's capability ceiling. `commands` lets the dialogs' close box
+# (and Esc/menu Close) hide the game window; `actions` lets the displays'
+# own clicks work (icon chat-link, sockets, Modified button, description
+# links). Without them those calls silently do nothing on manager installs.
+CAPS = "read,ui,extend,commands,actions"
 
 # Keep this list explicit: the client package must not include tests, docs, this tool,
 # old packages, or generated manifests. `qol.lua` is user data in mq.configDir, not a
@@ -100,7 +106,7 @@ def main() -> int:
                 "--version",
                 VERSION,
                 "--caps",
-                "read,ui,extend",
+                CAPS,
                 "--dir",
                 str(stage),
                 "--out",
