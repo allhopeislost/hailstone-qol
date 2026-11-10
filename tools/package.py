@@ -86,6 +86,7 @@ def main() -> int:
     parser.add_argument("--author", default="", help="author line for the manifest")
     parser.add_argument("--description", default="", help="description line for the manifest")
     parser.add_argument("--notes", default="", help="release-notes URL for the manifest")
+    parser.add_argument("--version", default=VERSION, help=f"version for the manifest (default: {VERSION})")
     args = parser.parse_args()
 
     try:
@@ -103,7 +104,7 @@ def main() -> int:
                 "--kind",
                 "script",
                 "--version",
-                VERSION,
+                args.version,
                 "--caps",
                 CAPS,
                 "--dir",

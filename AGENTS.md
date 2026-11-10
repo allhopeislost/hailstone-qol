@@ -20,22 +20,46 @@
 Run from this directory:
 
 ```sh
-lua tests/nameplate.lua
-lua tests/info.lua
-lua tests/spell_effects.lua
-lua tests/settings.lua
-lua tests/options.lua
-lua tests/spelldisplay.lua
-lua tests/itemdisplay.lua
-lua tests/item_preview.lua
-lua tests/map.lua
-lua tests/mapnpcs.lua
-find . -name '*.lua' -not -path './.git/*' -exec luac -p '{}' \;
-python3 -m unittest discover -s tests -p 'test_*.py'
+tools/check.sh
 ```
+
+It runs every `tests/*.lua`, a `luac -p` syntax check of all Lua files and the Python tests, prints nothing but a
+summary when all pass, and only the failing output otherwise.
 
 Package checks should write to a temporary/output directory, never publish, sign, install or start the client.
 Never change published manifests or old ZIPs.
+
+## Testing locally
+
+1. Remove qol in the add-on manager (Add-ons panel → Remove). While the manager has it installed, files that
+   still match its hashes get the add-on's rights and changed ones get a hand-installed file's, and a module may not
+   have fewer rights than the script that requires it (`module ... may not run`).
+2. `python3 tools/deploy_local.py` replaces `scripts/qol` with exactly the runtime files of `tools/package.py`
+   (`--home <dir>` or `HAILSTONE_HOME`; default `~/Games/Hailstone`). It refuses while the manager has qol.
+3. In game: `/lua stop qol`, then `/lua run qol`. Check for no `module ... not found` or `may not run`, the options
+   under Options → Plugins, a spell and an item window with a working close box, and nameplate levels.
+
+A hand-installed copy does not test the manager's install, hashes or capability ceiling. For a change to
+`CAPS` or the package contents, publish a GitHub pre-release and install it from its tag page
+(`.../releases/tag/<tag>`); the repository link keeps pointing at the newest full release.
+
+## Releasing
+
+Only when asked. The signing key lives outside the repo (`*.key` is ignored): `--key`, `$HAILSTONE_QOL_KEY` or
+`~/.local/share/hailstone-qol/hailstone-qol-sign.key`. `hailstone_sign` comes from `--sign-tool`, `$HAILSTONE_SIGN` or
+the client's `build/`.
+
+```sh
+python3 tools/release.py 0.2.7 --change "What changed" --change "Another change" --dry-run
+python3 tools/release.py 0.2.7 --change "What changed" --change "Another change"
+python3 tools/release.py 0.2.7 --maintenance --change "Moved files into core/"
+```
+
+The dry run does everything up to signing in a temp folder and changes nothing. A real run checks, packages,
+signs, verifies, bumps `VERSION` in `tools/package.py`, commits everything in the working tree, tags `vX.Y.Z`,
+pushes, publishes the GitHub release (notes: a heading plus one bullet per `--change`; `--maintenance` headed
+"Maintenance release") and compares the downloaded manifest with the repo's. Look at `git status` first: everything
+uncommitted is part of the release. `--message` sets the commit message.
 
 ## Adding a feature
 
