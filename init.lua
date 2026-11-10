@@ -78,10 +78,16 @@ local function className(spawn)
   if type(id) == 'number' and id % 1 == 0 then return info.classes[id] end
 end
 
+-- Merchants, bankers and trainers carry a class id past the playable ones: they get no level either.
+local function isServiceNpc(spawn)
+  local id = spawn.class
+  return type(id) == 'number' and id % 1 == 0 and id > #info.classes
+end
+
 -- The nameplate/target suffix: "[12]", "[WAR]" or "[12 WAR]", and "" when neither shows.
 local function detail(spawn, level, class)
   local parts = {}
-  if level and type(spawn.level) == 'number' and spawn.level > 0 then
+  if level and type(spawn.level) == 'number' and spawn.level > 0 and not isServiceNpc(spawn) then
     parts[#parts + 1] = tostring(spawn.level)
   end
   local name = class and className(spawn)

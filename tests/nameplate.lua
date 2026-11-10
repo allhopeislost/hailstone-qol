@@ -46,9 +46,13 @@ options.target_level.set(1)
 assert(nameplate(rat, 'a rat') == 'a rat [12]')
 options.npc_class.set(1)
 
--- No class tag for non-player class ids, malformed ids or a missing field.
+-- Merchants, bankers and trainers (class ids past the playable ones) get neither level nor class.
+for _, id in ipairs({17, 20, 40, 41}) do
+  assert(nameplate({npc = true, level = 50, class = id}, 'a merchant') == nil, id)
+end
+
+-- No class tag for malformed ids or a missing field; the level stays., malformed ids or a missing field.
 for _, case in ipairs({
-    {{npc = true, level = 12, class = 41}, 'a rat [12]'},
     {{npc = true, level = 12, class = 'wizard'}, 'a rat [12]'},
     {{npc = true, level = 12, class = 1.5}, 'a rat [12]'},
     {{npc = true, level = 12, class = 0}, 'a rat [12]'},

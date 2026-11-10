@@ -1,15 +1,16 @@
 # Hailstone QoL
 
 Hailstone QoL is a Lua add-on for small quality-of-life details in Hailstone's **Modern UI**. The current release
-is **0.2.4**, published from the public GitHub add-on repository
+is **0.2.5**, published from the public GitHub add-on repository
 `https://github.com/allhopeislost/hailstone-qol`.
 
 ## Features
 
 - Living NPC nameplates show levels through `hs.hooks{nameplate = ...}`; the Modern target window shows
-  target levels using the client's Target TLO and Hailstone spawn data. When `npc_class` is on, both append the
+  target levels using the client's Target TLO and Hailstone spawn data. Merchants, bankers and trainers (spawn class
+  ids past the playable ones) show neither a level nor a class. When `npc_class` is on, both append the
   spawn's class short name (`[12 ROG]`, or just `[ROG]` when levels are off) for the player classes WAR through BER;
-  other spawn class ids (merchants, bankers, trainers) and a missing `class` field add nothing.
+  a missing `class` field adds no class (the level still shows).
 - Replaces the Modern target, spell-display and item-display windows with richer layouts. Each spell display uses
   `eq.DisplaySpellId(instance)` → `eq.Plugin('script:qol').spell_view(id)` → `hs.spell(id)` for additional
   metadata and readable effects. The game's description and the cyan additional information share one
@@ -89,7 +90,7 @@ confirmed or permission is refused, a small status says why. Ids outside the kno
 Install it from Hailstone's login-screen **Add-ons** panel: paste the repository link for the latest release, or a specific release's tag-page link. Inspect the add-on
 name/version and requested capabilities, then choose **Install**. The link forms are
 `https://github.com/allhopeislost/hailstone-qol` and
-`https://github.com/allhopeislost/hailstone-qol/releases/tag/v0.2.4`; use the repository or release/tag page, not a direct
+`https://github.com/allhopeislost/hailstone-qol/releases/tag/v0.2.5`; use the repository or release/tag page, not a direct
 asset or ZIP-download link. Hailstone's add-on manager requires a public GitHub
 repository/release to fetch the manifest and package. Branch links (`.../tree/<branch>`) are not supported:
 the package is published as a release asset, not as a file in the branch.
@@ -128,7 +129,7 @@ python3 tools/package.py --out /tmp/qol-release
 python3 tools/package.py --make-addon /path/to/Hailstone-dev/tools/make_addon.py --out /tmp/qol-release
 ```
 
-The helper builds version 0.2.4 packages and a generated release manifest in that output directory; it does not
+The helper builds version 0.2.5 packages and a generated release manifest in that output directory; it does not
 publish, sign, install or run the client. To cut a signed release, sign the generated manifest with
 `hailstone_sign sign <secret-key-file> <out>/hailstone-addon.txt` (key kept outside the repository), verify it,
 copy the signed manifest back to the repository root, and upload the manifest and ZIP as assets of the
