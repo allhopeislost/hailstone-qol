@@ -1,11 +1,11 @@
 hailstone-addon 1
 name qol
 kind script
-version 0.2.1
+version 0.2.2
 author allhopeislost
 description Quality of life improvements.
-caps read,ui,extend
-notes https://github.com/allhopeislost/hailstone-qol/releases/tag/v0.2.1
-package any 34359 f8dd3204751bfb33cd734fa5fde9292b3aa5488b78b08d86935042e0e7ad732a qol-0.2.1.zip
+caps read,ui,extend,commands,actions
+notes https://github.com/allhopeislost/hailstone-qol/releases/tag/v0.2.2
+package any 34359 f8dd3204751bfb33cd734fa5fde9292b3aa5488b78b08d86935042e0e7ad732a qol-0.2.2.zip
 key 4300f2e14fa952b9da093aa9dfb0cd74d35195def8083748106afdffaacf645e
-signature b62bb1fef315da9dcdded26c3924395e94dadb2f7a76ef1a2f99c6cfa9617ee3f35ce80945155210c35e6eb06fad4572e7a12ae42c42b53be63d8ede1224990b
+signature d17ba39061d6dbf1765acc2b19b48896982861ac1394f7e24fc80e94ad63fd216c3bf0146f5db29b6bee54dd8d398ec5c4a11ecbff4ad40fba391a40c656510e
