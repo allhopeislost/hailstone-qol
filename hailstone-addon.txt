@@ -1,0 +1,7 @@
+hailstone-addon 1
+name qol
+kind script
+version 0.2.0
+description Quality of life improvements.
+caps read,ui,extend
+package any 13960 4f43fe1186cbda2cbdff3ee0c785353a51f5156d6932d380d009aefd4c7456a7 qol-0.2.0.zip

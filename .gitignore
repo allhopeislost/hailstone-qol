@@ -1,0 +1,7 @@
+# Deterministic release artifacts (rebuilt by tools/package.py, uploaded to GitHub releases)
+*.zip
+# Add-on signing keys (secret, never commit)
+*.key
+# Python bytecode
+__pycache__/
+*.pyc
