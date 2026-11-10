@@ -17,6 +17,7 @@ local settings = Settings.new(mq, function() return nil end)
 for _, name in ipairs({'nameplate_level', 'target_level', 'npc_class', 'spell_info', 'item_info', 'map_target_line', 'map_npcs'}) do
   assert(settings.get(name) == true)
 end
+assert(settings.get('item_preview') == false, 'the experimental tier preview defaults to off')
 
 assert(settings.set('target_level', false))
 assert(saved.version == 1 and saved.target_level == false)
@@ -75,6 +76,16 @@ assert(saved.npc_class == true)
 settings = Settings.new(mq, readSaved)
 assert(settings.get('npc_class') == true)
 
+settings = Settings.new(mq, function() return nil end)
+assert(settings.set('item_preview', true))
+assert(saved.item_preview == true and saved.version == 1)
+settings = Settings.new(mq, readSaved)
+assert(settings.get('item_preview') == true, 'item_preview=true persists')
+assert(settings.set('item_preview', false))
+assert(saved.item_preview == false)
+settings = Settings.new(mq, readSaved)
+assert(settings.get('item_preview') == false)
+
 settings = Settings.new(mq, function() return 'not a settings table' end)
 assert(settings.get('target_level') == true)
 settings = Settings.new(mq, function() return {version = 99, target_level = false} end)
@@ -86,6 +97,7 @@ end)
 assert(settings.get('target_level') == false)
 assert(settings.get('spell_info') == true and settings.get('item_info') == true)
 assert(settings.get('map_target_line') == true and settings.get('map_npcs') == true)
+assert(settings.get('item_preview') == false, 'a missing item_preview key defaults to off')
 settings = Settings.new(mq, function() error('bad config') end)
 assert(settings.get('nameplate_level') == true)
 

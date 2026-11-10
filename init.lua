@@ -12,6 +12,7 @@ local features = {
   {name = 'npc_class', label = 'NPC classes'},
   {name = 'spell_info', label = 'Additional spell information'},
   {name = 'item_info', label = 'Additional item information'},
+  {name = 'item_preview', label = 'Item tier previews'},
   {name = 'map_target_line', label = 'Map target line'},
   {name = 'map_npcs', label = 'NPCs on the map'},
 }
@@ -110,6 +111,13 @@ hs.ui_function('item_info', function(item)
   return info.item(item)
 end)
 
+-- Whether the experimental tier preview may show its buttons. The item
+-- display asks this before drawing them; older content without this
+-- function keeps the previous always-on behavior.
+hs.ui_function('preview_enabled', function()
+  return settings.get('item_preview') == true
+end)
+
 -- Experimental read-only tier preview. The UI asks for exactly one item id per click; this function only
 -- checks that the request is well formed and that this really is Project Triune, then asks the client for
 -- that item's native display. It does not wait for, find, or alter the response window.
@@ -127,6 +135,10 @@ local function projectTriune(server)
 end
 
 hs.ui_function('request_item_preview', function(itemId)
+  if not settings.get('item_preview') then
+    return {ok = false, kind = 'disabled',
+      error = 'Tier previews are turned off; enable them under Options → Plugins.'}
+  end
   if type(itemId) ~= 'number' or itemId ~= itemId or itemId == math.huge or itemId == -math.huge
       or itemId % 1 ~= 0 or itemId < 1 or itemId > 4294967295 then
     return {ok = false, kind = 'invalid_id', error = 'Invalid item id for a preview request.'}

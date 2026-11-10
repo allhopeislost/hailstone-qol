@@ -6,6 +6,7 @@ local stmlLinks, drawLinks, stmlRaws, infoRecords = {}, {}, {}, {}
 local requested, requestCalls = {}, 0
 local now, width, invisibleClick, hovered, checkboxClick, tierClick = 10, 380, false, false, false, nil
 local pluginAvailable, requestImpl = true, nil
+local previewEnabled = true
 
 local color = {1, 1, 1, 1}
 local T = {
@@ -75,6 +76,7 @@ eq = {
         infoRecords[#infoRecords + 1] = record
         return require('info').item(record)
       end,
+      preview_enabled = function() return previewEnabled end,
       request_item_preview = requestImpl,
     }
   end,
@@ -155,6 +157,7 @@ local function load()
   requested, requestCalls = {}, 0
   now, width, invisibleClick, hovered, checkboxClick, tierClick = 10, 380, false, false, false, nil
   pluginAvailable = true
+  previewEnabled = true
   requestImpl = function(id)
     requestCalls = requestCalls + 1
     requested[#requested + 1] = id
@@ -382,5 +385,31 @@ for _, id in ipairs({4000000, 1000000, 2000000, 0}) do
   assert(#buttons == 0, 'an id outside the tier ranges has no buttons')
   assert(requestCalls == 0)
 end
+
+-- While the item_preview option is off, no tier buttons are drawn and the
+-- plain Stats heading stays; re-enabling restores the buttons.
+load()
+previewEnabled = false
+item(1, 51907, 'Original Base', 'Live base description')
+frame()
+assert(#buttons == 0, 'a disabled preview has no tier buttons')
+assert(has(headings, 'Stats'), 'the plain Stats heading stays without a preview')
+assert(requestCalls == 0)
+tierClick = 'Enchanted'
+frame()
+assert(requestCalls == 0, 'no buttons means no click can request a preview')
+previewEnabled = true
+tierClick = nil
+frame()
+assert(#buttons == 3 and button('Base').primary, 're-enabling restores the tier buttons')
+
+-- Disabling mid-preview clears the state and its buttons.
+tierClick = 'Enchanted'
+frame()
+assert(requestCalls == 1 and requested[1] == 1051907)
+previewEnabled = false
+frame()
+assert(#buttons == 0 and not has(texts, 'Enchanted preview'), 'disabling clears a running preview')
+assert(has(headings, 'Stats'))
 
 print('item display custom client contract: ok')

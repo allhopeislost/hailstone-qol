@@ -1,7 +1,7 @@
 # Hailstone QoL
 
 Hailstone QoL is a Lua add-on for small quality-of-life details in Hailstone's **Modern UI**. The current release
-is **0.2.0**, published from the public GitHub add-on repository
+is **0.2.1**, published from the public GitHub add-on repository
 `https://github.com/allhopeislost/hailstone-qol`.
 
 ## Features
@@ -23,8 +23,9 @@ is **0.2.0**, published from the public GitHub add-on repository
   Each item display uses `eq.DisplayItemData(instance)` → the plugin's `item_info(data)` for additional item data,
   including base/tribute value, delay/damage ratio and lore text. On Project Triune, the Stats heading also has
   small **Base / Enchanted / Legendary** preview buttons; see the experimental preview section below.
-- Offers seven on/off options in **Options → Plugins**: `nameplate_level`, `target_level`, `npc_class`,
-  `spell_info`, `item_info`, `map_target_line`, and `map_npcs`. All default to on and are stored in the version-1
+- Offers eight on/off options in **Options → Plugins**: `nameplate_level`, `target_level`, `npc_class`,
+  `spell_info`, `item_info`, `item_preview`, `map_target_line`, and `map_npcs`. All default to on except the
+  experimental `item_preview`, which defaults to off (see below). They are stored in the version-1
   configuration file, `qol.lua`. Settings use `mq.pickle`/`dofile` under MacroQuest's
   `mq.configDir`, outside the add-on files, so add-on updates do not replace them.
 - Draws a straight line from the player to the current target on the Modern large map when
@@ -64,7 +65,8 @@ Modern UI is the supported UI pack. Gamepad UI is not supported and is outside t
 
 ## Experimental Triune tier preview
 
-On Project Triune, each Modern item window shows small **Base / Enchanted / Legendary** buttons at the right of
+This experiment is opt-in: enable `item_preview` in **Options → Plugins** (it defaults to off). On Project Triune,
+each Modern item window then shows small **Base / Enchanted / Legendary** buttons at the right of
 its **Stats** heading (or a **Preview** heading when the item has no stats). The item's current tier is highlighted
 at first, so an Enchanted item starts on Enchanted. Clicking another tier calls QoL's
 `request_item_preview(itemId)` once from the running script, which validates the id, confirms the server is
@@ -91,7 +93,7 @@ refusal.
 Install it from Hailstone's login-screen **Add-ons** panel: paste the repository link for the latest release, or a specific release's tag-page link. Inspect the add-on
 name/version and requested capabilities, then choose **Install**. The link forms are
 `https://github.com/allhopeislost/hailstone-qol` and
-`https://github.com/allhopeislost/hailstone-qol/releases/tag/v0.2.0`; use the repository or release/tag page, not a direct
+`https://github.com/allhopeislost/hailstone-qol/releases/tag/v0.2.1`; use the repository or release/tag page, not a direct
 asset or ZIP-download link. Hailstone's add-on manager requires a public GitHub
 repository/release to fetch the manifest and package. Branch links (`.../tree/<branch>`) are not supported:
 the package is published as a release asset, not as a file in the branch.
@@ -132,7 +134,7 @@ python3 tools/package.py --out /tmp/qol-release
 python3 tools/package.py --make-addon /path/to/Hailstone-dev/tools/make_addon.py --out /tmp/qol-release
 ```
 
-The helper builds version 0.2.0 packages and a generated release manifest in that output directory; it does not
+The helper builds version 0.2.1 packages and a generated release manifest in that output directory; it does not
 publish, sign, install or run the client. To cut a signed release, sign the generated manifest with
 `hailstone_sign sign <secret-key-file> <out>/hailstone-addon.txt` (key kept outside the repository), verify it,
 copy the signed manifest back to the repository root, and upload the manifest and ZIP as assets of the

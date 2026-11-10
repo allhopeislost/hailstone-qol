@@ -8,6 +8,7 @@ local DEFAULTS = {
   npc_class = true,
   spell_info = true,
   item_info = true,
+  item_preview = false,
   map_target_line = true,
   map_npcs = true,
 }

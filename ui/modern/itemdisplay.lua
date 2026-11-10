@@ -50,6 +50,15 @@ end
 
 local function previewTarget(base, tier) return base + tier * PREVIEW_STRIDE end
 
+-- The Options → Plugins switch for the experiment. A missing plugin or a
+-- plugin without this function keeps the previous always-on behavior; an
+-- explicit false hides the buttons and clears any running preview.
+local function previewEnabled(plugin)
+  if plugin == nil or type(plugin.preview_enabled) ~= 'function' then return true end
+  local ok, enabled = pcall(plugin.preview_enabled)
+  return ok and enabled == true
+end
+
 -- The ten fields eq.DisplayItemData documents; a plain copy so a later frame keeps the requested version.
 local function displayRecord(data)
   local out = {}
@@ -503,7 +512,7 @@ local function body(win, w, h, s)
   end
   if type(data) == "table" then
     local tier, base = previewTier(data.id)
-    if tier then
+    if tier and previewEnabled(plugin) then
       if not state then
         state = { originId = data.id, sourceTier = tier, base = base }
         previews[win] = state

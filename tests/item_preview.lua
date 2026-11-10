@@ -1,15 +1,25 @@
 -- request_item_preview: one validated, click-only server request inside QoL's own capability scope.
 local functions, messages, requests, servers = {}, {}, {}, 0
+local options, saved = {}, nil
 local hs = {
+  option = function(option) options[option.name] = option end,
   ui_function = function(name, fn) functions[name] = fn end,
   chat = function(text) messages[#messages + 1] = text end,
 }
 package.preload.hailstone = function() return hs end
-package.preload.mq = function() return {} end
+package.preload.mq = function()
+  return {pickle = function(_, value) saved = value end}
+end
 dofile('init.lua')
 assert(#messages == 0, 'loading QoL must not request or report a preview')
 local request = assert(functions.request_item_preview)
 assert(functions.test_item_preview == nil, 'the temporary fixed-id diagnostic must be gone')
+
+-- The experiment is opt-in: requests stay disabled until its option is on.
+assert(options.item_preview and options.item_preview.get() == 0)
+assert(request(1000001).kind == 'disabled' and servers == 0)
+options.item_preview.set(1)
+assert(options.item_preview.get() == 1 and saved.item_preview == true)
 
 local function triune()
   return {name = 'Project Triune', host = 'eq-emulator.com', port = 5999,

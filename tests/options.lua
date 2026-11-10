@@ -38,9 +38,10 @@ dofile('init.lua')
 assert(options.target_level and options.spell_info)
 assert(options.target_level.min == 0 and options.target_level.max == 1)
 assert(options.spell_info.min == 0 and options.spell_info.max == 1)
-assert(options.nameplate_level and options.item_info)
+assert(options.nameplate_level and options.item_info and options.item_preview)
 for _, option in pairs(options) do
-  assert(option.min == 0 and option.max == 1 and option.get() == 1)
+  assert(option.min == 0 and option.max == 1)
+  assert(option.get() == (option.name == 'item_preview' and 0 or 1))
 end
 assert(options.target_level.get() == 1 and options.spell_info.get() == 1)
 assert(functions.target_name and functions.spell_info and functions.item_info)
@@ -102,6 +103,16 @@ options.item_info.set(1)
 assert(functions.item_info(item):find('HP: 12', 1, true))
 assert(functions.item_info(nil) == nil)
 assert(saved.nameplate_level and saved.item_info)
+
+-- The experimental tier preview is opt-in: off by default, refused while
+-- off, available once enabled.
+assert(functions.preview_enabled and functions.preview_enabled() == false)
+local denied = functions.request_item_preview(51907)
+assert(denied.ok == false and denied.kind == 'disabled')
+options.item_preview.set(1)
+assert(options.item_preview.get() == 1 and functions.preview_enabled() == true)
+options.item_preview.set(0)
+assert(options.item_preview.get() == 0 and functions.preview_enabled() == false)
 
 failSave = true
 options.target_level.set(0)
