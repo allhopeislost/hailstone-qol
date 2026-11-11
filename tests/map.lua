@@ -8,7 +8,12 @@ local hs = {
   option = function(option) options[option.name] = option end,
   ui_function = function(name, fn) functions[name] = fn end,
   player = function() playerReads = playerReads + 1 return player end,
-  spawn = function(id) assert(id == 2) spawnReads = spawnReads + 1 return target end,
+  spawn = function(id)
+    if id == 1 then return {x = 10, y = -30} end -- the player
+    assert(id == 2)
+    spawnReads = spawnReads + 1
+    return target
+  end,
 }
 package.preload.hailstone = function() return hs end
 package.preload.mq = function() return {pickle = function() end} end
@@ -16,6 +21,7 @@ dofile('init.lua')
 assert(options.map_target_line.get() == 1)
 local point = functions.map_target()
 assert(point.x == 60 and point.y == -40, 'world-to-map swaps and negates the axes')
+assert(point.px == 30 and point.py == -10, 'the player point uses the same axes')
 options.map_target_line.set(0)
 local reads = playerReads
 assert(functions.map_target() == nil and playerReads == reads)

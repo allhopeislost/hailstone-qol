@@ -154,3 +154,83 @@ Status: Accepted
 Recorded: 2026-11-10
 Decision: Living NPCs are marked, starting from the map's con colour and name. Corpses and players are left out.
 Why: The marks should behave like the map's own.
+
+## D020 The target line also runs on the minimap
+Status: Accepted
+Recorded: 2026-11-10
+Supersedes: D018 (only where it ruled out a minimap line; the line stays straight)
+Decision: The same option draws the straight line on the minimap too. It starts at the circle's centre (the player),
+follows the minimap's rotation and, when the target is beyond the range, stops at the circle's edge without an end dot.
+Why: The minimap is what players watch while moving; it needs the same direction cue.
+Rules out: A separate option for the minimap; pathfinding.
+
+## D021 Zone Find is a window, not an option
+Status: Accepted
+Recorded: 2026-11-11
+Decision: `/zonefind [text]` (and a Plugins menu entry) opens a window that lists the zone's spawns from `hs.spawns()`:
+a search box, NPC / PC / Corpse filters (only NPC on), columns Name, Role, Lvl and Dist that sort when their head is
+clicked (again to reverse), and a Travel to button that sends `/target id N` and then `/nav id N`. There is no
+Options entry; the filters and the sort live in the window and are not saved. Names are shown without the digits
+and underscores the server adds. Distance is a whole number with no unit.
+Why: A tool the player opens on purpose needs no switch. `/target id` picks the exact spawn, `/target <name>` takes the
+nearest one of that name.
+Rules out: A saved filter or sort; double click to travel; a unit on the distance.
+
+## D022 The Role column is for merchants, bankers and trainers, and only when there are some
+Status: Accepted
+Recorded: 2026-11-11
+Decision: A living NPC's class id gives a role: 20 to 35 Trainer (the tooltip says who it trains), 40 and 66 Banker,
+41, 59, 61, 67, 68 and 70 Merchant. Other NPC-only ids have none. A role has no level (as D010). The Role column
+shows only while a listed row has a role, and the window is 360 wide without it and 410 with it; when the sorted
+column goes away the sort returns to distance. The search matches the role too.
+Why: The class id is all the client gives; what a merchant sells (a spell vendor) is not in it. The ids come from the
+reference client (`game/eq_names.cpp`), unverified against the custom client.
+Rules out: A spell vendor role; a fixed-width window that hides the column.
+
+## D023 The capability ceiling gains target and move
+Status: Accepted
+Recorded: 2026-11-11
+Supersedes: the `read,ui,extend,commands,actions` ceiling
+Decision: The manifest declares `read,ui,extend,commands,actions,target,move`. Travel to sends `/target` (the
+`target` capability) and `/nav` (`move`); the client checks each command against them. Existing installs ask the
+player to approve the update.
+Why: Without them the button does nothing on a manager install.
+Rules out: Reaching the commands some other way; the capability check is the same everywhere.
+
+## D024 Zone Find is renamed FindWalk, command /findW
+Status: Accepted
+Recorded: 2026-11-11
+Supersedes: D021 (the name and the command only); D022 and D023 apply to FindWalk unchanged
+Decision: The window is called FindWalk and opens with `/findW [text]` (and the Plugins menu entry FindWalk). Its files
+are `core/findwalk.lua` and `ui/modern/findwalk.lua`; the functions the window calls are `findwalk_state`,
+`findwalk_close`, `findwalk_rows` and `findwalk_travel`.
+Why: "Zone Find" promised more than it does: it lists spawns and walks to one, and it does not list zone lines.
+Rules out: Keeping both names or both commands.
+
+## D025 The window is titled Find
+Status: Accepted
+Recorded: 2026-11-11
+Supersedes: D024 (only where it names the window and its menu entry FindWalk; the command and the files keep it)
+Decision: The window's title bar and its Plugins menu entry say "Find". The feature, the files and the functions are
+still FindWalk, and the command is still `/findW`.
+Why: Inside the game the title only has to say what the window is; the stock Find window is a different screen.
+Rules out: A second title for the same window.
+
+## D026 FindWalk gets a switch, a double click and starts A to Z
+Status: Accepted
+Recorded: 2026-11-11
+Supersedes: D021 (no Options entry; the default order is distance; no double click)
+Decision: Options → Plugins has "Find window (/findW)", on by default and saved like the others. Off, `/findW` only says
+where to turn it on, the window closes and its functions answer nothing. A double click on a row is Travel to (it
+selects the row too); a single click only selects. The list starts sorted by name, A to Z, and returns to that when
+the sorted Role column goes away. Clicking another head still starts ascending.
+Why: The player asked for all three. One switch for a whole window is the same shape as the other options.
+Rules out: Saving the filters or the sort.
+
+## D027 A row's double click is read from the hovered row, not from its hit box
+Status: Accepted
+Recorded: 2026-11-11
+Decision: FindWalk's rows ask `ui.IsMouseDoubleClicked` on the hovered row, apart from the `T.Hit` box that selects it.
+Why: `T.Hit` is an `InvisibleButton`, which reports a click on mouse up, and `IsMouseDoubleClicked` is true on the
+frame the mouse goes down, so the first version's check inside the hit box never ran ingame.
+Rules out: Tracking two clicks by time in the window; a second hit box for the double click.

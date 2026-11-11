@@ -14,7 +14,7 @@ local function readSaved()
 end
 
 local settings = Settings.new(mq, function() return nil end)
-for _, name in ipairs({'target_level', 'npc_class', 'spell_info', 'item_info', 'map_target_line', 'map_npcs'}) do
+for _, name in ipairs({'target_level', 'npc_class', 'spell_info', 'item_info', 'map_target_line', 'map_npcs', 'findwalk'}) do
   assert(settings.get(name) == true)
 end
 assert(settings.get('item_preview') == false, 'the experimental tier preview defaults to off')

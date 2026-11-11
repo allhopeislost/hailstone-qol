@@ -65,7 +65,7 @@ class PackageStagingTests(unittest.TestCase):
 
 class PackageOutputTests(unittest.TestCase):
     def test_caps_ceiling(self):
-        self.assertEqual(package.CAPS, "read,ui,extend,commands,actions")
+        self.assertEqual(package.CAPS, "read,ui,extend,commands,actions,target,move")
 
     def test_rejects_output_in_source_tree(self):
         with tempfile.TemporaryDirectory() as temp:

@@ -20,8 +20,9 @@ local features = {
   {name = 'spell_info', label = 'Additional spell information'},
   {name = 'item_info', label = 'Additional item information'},
   {name = 'item_preview', label = 'Item version windows'},
-  {name = 'map_target_line', label = 'Map target line'},
+  {name = 'map_target_line', label = 'Target line on map and minimap'},
   {name = 'map_npcs', label = 'Show all NPCs on the map'},
+  {name = 'findwalk', label = 'Find window (/findW)'},
 }
 
 if hs.option then
@@ -69,7 +70,70 @@ hs.ui_function('map_target', function()
   if not target then return nil end
   if not finite(target.x) or not finite(target.y) then return nil end
   -- Hailstone world axes differ from /loc and from map-file axes.
-  return {x = -target.y, y = -target.x}
+  local point = {x = -target.y, y = -target.x}
+  -- The minimap is centred on the player and only knows offsets, so it also needs the player's own point.
+  local me = positiveInteger(player.spawn_id) and hs.spawn(player.spawn_id)
+  if me and finite(me.x) and finite(me.y) then point.px, point.py = -me.y, -me.x end
+  return point
+end)
+
+-- FindWalk (ui/modern/findwalk.lua). The window is a separate script: it asks for its state and its rows here, so the
+-- spawn list, filtering and sorting stay in core/findwalk.lua and only the visible rows cross over.
+local find = require('core.findwalk')
+local findWalkState = {open = false, search = '', serial = 0}
+
+local function toggleFindWalk(...)
+  if not settings.get('findwalk') then
+    findWalkState.open = false
+    if type(hs.chat) == 'function' then
+      pcall(hs.chat, 'QoL: the Find window is turned off; enable it under Options \xE2\x86\x92 Plugins.', 15)
+    end
+    return
+  end
+  local text = table.concat({...}, ' '):match('^%s*(.-)%s*$')
+  if text ~= '' then
+    findWalkState.open, findWalkState.search = true, text:sub(1, find.MAX_TEXT)
+    findWalkState.serial = findWalkState.serial + 1
+  else
+    findWalkState.open = not findWalkState.open
+  end
+end
+
+-- The command opens (or closes) the window, `/findW gnoll` opens it with that search. The menu entry is the same.
+if type(mq.bind) == 'function' then pcall(mq.bind, '/findW', toggleFindWalk) end
+if type(hs.menu) == 'function' then pcall(hs.menu, 'Find', '/findW') end
+
+hs.ui_function('findwalk_state', function()
+  -- turning the option off closes the window on its next frame
+  if not settings.get('findwalk') then findWalkState.open = false end
+  return {open = findWalkState.open, search = findWalkState.search, serial = findWalkState.serial}
+end)
+
+hs.ui_function('findwalk_close', function() findWalkState.open = false end)
+
+hs.ui_function('findwalk_rows', function(query)
+  if not settings.get('findwalk') then return nil end
+  if type(hs.spawns) ~= 'function' or type(hs.player) ~= 'function' then return nil end
+  local player = hs.player()
+  if type(player) ~= 'table' or player.in_zone == false then return {rows = {}, total = 0, has_role = false} end
+  local me = positiveInteger(player.spawn_id) and type(hs.spawn) == 'function' and hs.spawn(player.spawn_id)
+  if type(me) == 'table' then me.id = player.spawn_id else me = nil end
+  local rows, total = find.rows(hs.spawns(), me, query)
+  return {rows = find.plain(rows), total = total, has_role = find.hasRole(rows)}
+end)
+
+-- Target the spawn, then walk to it. `/target` needs the target capability and `/nav` the move capability.
+hs.ui_function('findwalk_travel', function(id)
+  if not settings.get('findwalk') then return {ok = false, error = 'The Find window is turned off.'} end
+  if not positiveInteger(id) then return {ok = false, error = 'Invalid spawn.'} end
+  if type(hs.spawn) ~= 'function' or not hs.spawn(id) then
+    return {ok = false, error = 'That spawn is no longer in the zone.'}
+  end
+  for _, line in ipairs({'/target id ' .. id, '/nav id ' .. id}) do
+    local sent, err = pcall(mq.cmd, line)
+    if not sent then return {ok = false, error = 'Command refused: ' .. tostring(err)} end
+  end
+  return {ok = true}
 end)
 
 -- A living NPC's class short name, or nil when the client sends no playable class id.

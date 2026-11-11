@@ -10,6 +10,7 @@ local DEFAULTS = {
   item_preview = false,
   map_target_line = true,
   map_npcs = true,
+  findwalk = true,
 }
 
 local function defaults()

@@ -23,10 +23,20 @@ Update this file whenever the add-on starts using, or stops using, a client func
 | `eq.DisplayItemData(instance)` | which item record an item window shows | custom |
 | `hs.spell(id)` | spell record | source (see fields) |
 | `hs.spawn(id)`, `hs.player()` | target and map data | source |
+| `hs.spawns()` | every spawn in the zone, by id (FindWalk) | ingame |
+| `hs.menu(label, command)` | the Plugins menu entry that runs `/findW` | ingame (hand install; the manifest's ceiling is not tested) |
+| `mq.bind('/findW', fn)` | the command that opens FindWalk | ingame |
+| `mq.cmd(line)` | `/target id N`, `/nav id N` (Travel to) | ingame (a hand-installed script runs with player rights) |
 | `hs.server()` | detect Project Triune | source; `nil` before the world login |
 | `hs.inspect_item(id)` | open another item version | source |
 | `eq.DrawZoneMap` | the map line wraps it | source |
+| `eq.DrawMinimap(cx, cy, r, range, rotate)` | the minimap line wraps it; returns north's screen direction `(sin, -cos)` of the heading; the player is the circle's centre, `r / range` pixels per map unit | ingame |
 | `mq.pickle`, `mq.configDir` | save settings | source |
+
+Two `ui` bindings are easy to combine wrongly: `ui.InvisibleButton` (the modern pack's `T.Hit`) returns true when
+the mouse goes **up**, while `ui.IsMouseDoubleClicked` is true on the frame it goes **down**. A double click therefore
+never shares a frame with the hit box's click; ask for it on its own, on the hovered item (`ui.IsItemHovered()`), as
+the client's own list windows do (`ui/modern/spellbook.lua`, `abilitybook.lua`). FindWalk's rows do this.
 
 ## `hs.spell(id)` fields
 
@@ -51,9 +61,17 @@ Read: `id`, `name`, `req_level`, `stack`, `charges`, `bag_slots`, `weight`, `ac`
 
 From `hs.spawn(id)` (source): `id`, `name`, `level`, `class`, `race`, `owner`, `guild`, `npc`, `corpse`, `x`, `y`,
 `z`, `heading`, `hp_percent`, `rider`, `mercenary`, `gm`, `body_type`. The add-on uses `npc`, `corpse`, `level`,
-`class`, `name`, `x`, `y`.
+`class`, `name`, `x`, `y`, `z`, `id`. Names are the raw ones (`a_rat01`); FindWalk cleans them for display.
+
+Class ids FindWalk reads (reference client `game/eq_names.cpp`; unverified against the custom client): 20 to 35
+guildmasters (class `id - 19`), 40 and 66 bankers, 41, 59, 61, 67, 68 and 70 merchants. `world().spawns` holds players
+and corpses as well as NPCs (`npc`, `corpse`).
+
+Zone lines are not available: the client has them (zone regions, `OP_SendZonepoints`) but no Lua function returns them.
 
 ## Capabilities
 
-The manifest declares `read, ui, extend, commands, actions`. `commands` and `actions` are needed for the windows'
-close box, icon chat-link, sockets and description links; without them those clicks silently do nothing.
+The manifest declares `read, ui, extend, commands, actions, target, move`. `commands` and `actions` are needed for the
+windows' close box, icon chat-link, sockets and description links; without them those clicks silently do nothing.
+`target` and `move` are for FindWalk's Travel to: `/target` needs `target` and `/nav` needs `move` (docs/plugins.md in
+the client, "Capabilities"); every command is checked against the running code's bits.

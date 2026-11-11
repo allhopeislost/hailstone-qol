@@ -13,27 +13,32 @@ import tempfile
 
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = "0.2.6"
+VERSION = "0.2.7"
 
 # The manifest's capability ceiling. `commands` lets the dialogs' close box
 # (and Esc/menu Close) hide the game window; `actions` lets the displays'
 # own clicks work (icon chat-link, sockets, Modified button, description
 # links). Without them those calls silently do nothing on manager installs.
-CAPS = "read,ui,extend,commands,actions"
+# `target` and `move` are for the FindWalk window's Travel to button, which sends
+# `/target id N` and `/nav id N`; each command is checked against these bits.
+CAPS = "read,ui,extend,commands,actions,target,move"
 
 # Keep this list explicit: the client package must not include tests, docs, this tool,
 # old packages, or generated manifests. `qol.lua` is user data in mq.configDir, not a
 # runtime file to package; `core/settings.lua` is the code that loads/saves it.
 RUNTIME_FILES = (
     "init.lua",
+    "core/findwalk.lua",
     "core/info.lua",
     "core/settings.lua",
     "core/spell_effects.lua",
     "core/spell_spa_names.lua",
     "ui/modern/itemdisplay.lua",
     "ui/modern/maptargetline.lua",
+    "ui/modern/minimaptargetline.lua",
     "ui/modern/spelldisplay.lua",
     "ui/modern/target.lua",
+    "ui/modern/findwalk.lua",
 )
 
 

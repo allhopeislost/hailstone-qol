@@ -77,7 +77,7 @@ uncommitted is part of the release. `--message` sets the commit message.
 
 ## Adding a feature
 
-1. Keep changes within the add-on and its declared `read,ui,extend,commands,actions` capability ceiling; preserve graceful behavior
+1. Keep changes within the add-on and its declared `read,ui,extend,commands,actions,target,move` capability ceiling; preserve graceful behavior
    where client hooks or server data are unavailable.
 2. Add/adjust a focused test and document user-visible behavior and limitations in `README.md`.
 3. If adding/removing a runtime file, update the explicit allowlist in `tools/package.py`; exclude tests, docs,
