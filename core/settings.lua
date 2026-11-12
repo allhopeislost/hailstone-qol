@@ -11,6 +11,7 @@ local DEFAULTS = {
   map_target_line = true,
   map_npcs = true,
   findwalk = true,
+  named_tracker = true,
 }
 
 local function defaults()

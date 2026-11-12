@@ -23,6 +23,7 @@ local features = {
   {name = 'map_target_line', label = 'Target line on map and minimap'},
   {name = 'map_npcs', label = 'Show all NPCs on the map'},
   {name = 'findwalk', label = 'Find window (/findW)'},
+  {name = 'named_tracker', label = 'Named tracker (/named)'},
 }
 
 if hs.option then
@@ -136,6 +137,281 @@ hs.ui_function('findwalk_travel', function(id)
   return {ok = true}
 end)
 
+-- Named tracker (ui/modern/named.lua). Same split as FindWalk: the window is a separate
+-- script; it asks for its state, the zone list and its rows here, so everything over the
+-- generated database (core/named_data.lua) and the tracked-name store stays in core/named.lua.
+-- The data may be missing (a stale install without the generated file): the window then has
+-- no zones to list and tracks nothing. projectTriune is declared here and defined with the
+-- Other versions controls below; the loot windows check the server the same way.
+local projectTriune
+local named = require('core.named')
+local namedData = named.loadData()
+local namedStore = named.newStore(mq, nil, reportSaveError)
+local namedState = {open = false, edit = false, zone = nil, serial = 0}
+
+-- The short name of the zone the player is in, lowercase to match the data's keys, or nil
+-- when the client does not tell (not in a zone, or no zone_name in this client).
+local function currentZoneShort()
+  if type(hs.player) ~= 'function' then return nil end
+  local ok, player = pcall(hs.player)
+  if not ok or type(player) ~= 'table' or player.in_zone == false then return nil end
+  if not positiveInteger(player.zone_id) then return nil end
+  local read, name = pcall(hs.zone_name, player.zone_id)
+  if not read or type(name) ~= 'string' then return nil end
+  local short = name:match('^%s*(.-)%s*$'):lower()
+  if short == '' then return nil end
+  return short
+end
+
+-- The zone to work on: an argument wins, otherwise the player's current zone.
+local function namedZone(zoneShort)
+  if type(zoneShort) == 'string' then
+    zoneShort = zoneShort:match('^%s*(.-)%s*$'):lower():sub(1, named.MAX_ZONE)
+    if zoneShort ~= '' then return zoneShort end
+  end
+  return currentZoneShort()
+end
+
+local function toggleNamed(...)
+  if not settings.get('named_tracker') then
+    namedState.open, namedState.edit = false, false
+    if type(hs.chat) == 'function' then
+      pcall(hs.chat, 'QoL: the named tracker is turned off; enable it under Options \xE2\x86\x92 Plugins.', 15)
+    end
+    return
+  end
+  local text = table.concat({...}, ' '):match('^%s*(.-)%s*$')
+  if text ~= '' then
+    -- `/named gukbottom` opens the window on that zone
+    namedState.zone = text:sub(1, named.MAX_ZONE)
+    namedState.open = true
+  else
+    namedState.open = not namedState.open
+  end
+  namedState.serial = namedState.serial + 1
+end
+
+pcall(mq.bind, '/named', toggleNamed)
+pcall(hs.menu, 'Named', '/named')
+
+hs.ui_function('named_state', function()
+  -- turning the option off closes the window on its next frame
+  if not settings.get('named_tracker') then
+    namedState.open, namedState.edit = false, false
+  end
+  return {
+    open = namedState.open,
+    edit = namedState.edit,
+    zone = namedState.zone or currentZoneShort(),
+    serial = namedState.serial,
+  }
+end)
+
+hs.ui_function('named_close', function() namedState.open = false end)
+
+hs.ui_function('named_edit_set', function(value)
+  if not settings.get('named_tracker') then
+    namedState.edit = false
+    return
+  end
+  namedState.edit = value == true
+end)
+
+-- The tracker window's divider between the named list and the drops list (design pixels of list
+-- height), persisted in qol_named.lua; nil when never dragged.
+hs.ui_function('named_split', function()
+  if not settings.get('named_tracker') then return nil end
+  return namedStore.split()
+end)
+
+hs.ui_function('named_split_set', function(value)
+  if not settings.get('named_tracker') then return false end
+  return namedStore.setSplit(value)
+end)
+
+hs.ui_function('named_zones', function()
+  if not settings.get('named_tracker') then return nil end
+  local current = currentZoneShort()
+  return {current = current, zones = named.zoneList(namedData, current)}
+end)
+
+hs.ui_function('named_list', function(zoneShort)
+  if not settings.get('named_tracker') then return nil end
+  if type(zoneShort) ~= 'string' then return nil end
+  zoneShort = zoneShort:lower()
+  if zoneShort == '' or #zoneShort > named.MAX_ZONE then return nil end
+  local currentShort = currentZoneShort()
+  -- rows exist outside a zone too; only there does anything spawn
+  local spawns = type(hs.spawns) == 'function' and hs.spawns() or nil
+  local me
+  if currentShort and type(hs.spawn) == 'function' then
+    local player = hs.player()
+    if type(player) == 'table' and positiveInteger(player.spawn_id) then
+      me = hs.spawn(player.spawn_id)
+      if type(me) == 'table' then me.id = player.spawn_id else me = nil end
+    end
+  end
+  local result = named.rows(namedData, spawns, me, currentShort, zoneShort,
+    namedStore.list(zoneShort))
+  -- names removed from the tracker window (the "x" of a row) stay out of its list; the editor's
+  -- suggestion list shows them again, and adding them there unhides them
+  local hiddenSet = {}
+  for _, existing in ipairs(namedStore.hiddenList(zoneShort)) do
+    hiddenSet[named.nameKey(existing)] = true
+  end
+  local visible = {}
+  for _, row in ipairs(result.rows) do
+    if not hiddenSet[named.nameKey(row.name)] then visible[#visible + 1] = row end
+  end
+  result.rows = visible
+  local long
+  if type(namedData) == 'table' and type(namedData.zones) == 'table' then
+    local zone = namedData.zones[zoneShort]
+    if type(zone) == 'table' and type(zone.long) == 'string' then long = zone.long end
+  end
+  return {
+    zone = zoneShort,
+    long = long,
+    current = currentShort ~= nil and zoneShort == currentShort,
+    rows = result.rows,
+  }
+end)
+
+-- The loot of one named entry from the data, for the drop list in the window. A tracked
+-- custom name has no data entry, so it lists no drops; anything else unknown is nil.
+hs.ui_function('named_drops', function(zoneShort, name)
+  if not settings.get('named_tracker') then return nil end
+  if type(zoneShort) ~= 'string' or type(name) ~= 'string' then return nil end
+  if #zoneShort > named.MAX_ZONE then return nil end
+  zoneShort = zoneShort:match('^%s*(.-)%s*$')
+  if zoneShort == '' then zoneShort = currentZoneShort() or '' end
+  zoneShort = zoneShort:lower()
+  if zoneShort == '' then return nil end
+  local key = named.nameKey(name)
+  if not key then return nil end
+  for _, entry in ipairs(named.namedOfZone(namedData, zoneShort) or {}) do
+    if named.nameKey(entry.name) == key then
+      return { drops = entry.drops }
+    end
+  end
+  -- not a flagged named of the zone: a hand-tracked name still gets its drops from the loot index
+  local loot = named.lootOf(namedData, name)
+  if loot then return { drops = loot } end
+  for _, existing in ipairs(namedStore.list(zoneShort)) do
+    if named.nameKey(existing) == key then return { drops = {} } end
+  end
+  return nil
+end)
+
+-- Target a spawned named. Only `/target` here, no movement: walking is FindWalk's job.
+hs.ui_function('named_target', function(id)
+  if not settings.get('named_tracker') then
+    return {ok = false, error = 'The named tracker is turned off.'}
+  end
+  if not positiveInteger(id) then return {ok = false, error = 'Invalid spawn.'} end
+  if type(hs.spawn) ~= 'function' or not hs.spawn(id) then
+    return {ok = false, error = 'That spawn is no longer in the zone.'}
+  end
+  local sent, err = pcall(mq.cmd, '/target id ' .. id)
+  if not sent then return {ok = false, error = 'Command refused: ' .. tostring(err)} end
+  return {ok = true}
+end)
+
+-- A named's loot opens in its own item window, on the same servers as the Other versions
+-- controls; hs.inspect_item is mirrored from request_item_preview.
+hs.ui_function('named_open_item', function(itemId)
+  if not settings.get('named_tracker') then
+    return {ok = false, kind = 'disabled',
+      error = 'The named tracker is turned off; enable it under Options → Plugins.'}
+  end
+  if not positiveInteger(itemId) or itemId > 4294967295 then
+    return {ok = false, kind = 'invalid_id', error = 'Invalid item id for a loot window.'}
+  end
+  if type(hs.server) ~= 'function' then
+    return {ok = false, kind = 'server',
+      error = 'Cannot confirm Project Triune: hs.server is unavailable in this client.'}
+  end
+  local read, server = pcall(hs.server)
+  if not read then
+    return {ok = false, kind = 'server',
+      error = 'Cannot confirm Project Triune: hs.server failed: ' .. tostring(server)}
+  end
+  if type(server) ~= 'table' then
+    return {ok = false, kind = 'server',
+      error = 'Cannot confirm Project Triune: no server identity (not logged into a world?).'}
+  end
+  if not projectTriune(server) then
+    local name = server.world or server.name or server.host or 'unknown'
+    return {ok = false, kind = 'server',
+      error = "Loot windows are for Project Triune; current server '" .. tostring(name)
+        .. "' is not recognized."}
+  end
+  if type(hs.inspect_item) ~= 'function' then
+    return {ok = false, kind = 'missing_api',
+      error = 'hs.inspect_item is unavailable in this client, so no item window can be opened.'}
+  end
+  local sent, err = pcall(hs.inspect_item, itemId)
+  if not sent then
+    return {ok = false, kind = 'refused', error = 'The item window request was refused: ' .. tostring(err)}
+  end
+  return {ok = true, id = itemId}
+end)
+
+-- Tracked names of a zone and what the data suggests instead; '' as the zone is the current one.
+hs.ui_function('named_tracked', function(zoneShort)
+  if not settings.get('named_tracker') then return nil end
+  local zone = namedZone(zoneShort)
+  if not zone then return {names = {}, suggestions = {}} end
+  local names = namedStore.list(zone)
+  return {names = names, suggestions = named.suggestions(namedData, zone, names)}
+end)
+
+hs.ui_function('named_add', function(zoneShort, name)
+  if not settings.get('named_tracker') then
+    return {ok = false, error = 'The named tracker is turned off.'}
+  end
+  local zone = namedZone(zoneShort)
+  if not zone then return {ok = false, error = 'Not in a zone.'} end
+  namedStore.unhide(zone, name) -- adding a name also shows it in the tracker window again
+  local ok, err = namedStore.add(zone, name)
+  if not ok then
+    -- already tracked: fine, it is now unhidden and tracked
+    if err == 'Already tracking that name.' then
+      return {ok = true, names = namedStore.list(zone)}
+    end
+    return {ok = false, error = err or 'Could not track that name.'}
+  end
+  return {ok = true, names = namedStore.list(zone)}
+end)
+
+-- Remove a name from the tracker window's list (the "x" of a row). Hiding also stops tracking it;
+-- the name then shows up in the editor's suggestion list, where adding it brings it back.
+hs.ui_function('named_hide', function(zoneShort, name)
+  if not settings.get('named_tracker') then
+    return {ok = false, error = 'The named tracker is turned off.'}
+  end
+  local zone = namedZone(zoneShort)
+  if not zone then return {ok = false, error = 'Not in a zone.'} end
+  if type(name) ~= 'string' or not named.nameKey(name) then
+    return {ok = false, error = 'Invalid name.'}
+  end
+  namedStore.remove(zone, name)
+  local ok, err = namedStore.hide(zone, name)
+  if not ok then return {ok = false, error = err or 'Could not remove that name.'} end
+  return {ok = true}
+end)
+
+hs.ui_function('named_remove', function(zoneShort, name)
+  if not settings.get('named_tracker') then
+    return {ok = false, error = 'The named tracker is turned off.'}
+  end
+  local zone = namedZone(zoneShort)
+  if not zone then return {ok = false, error = 'Not in a zone.'} end
+  local ok, err = namedStore.remove(zone, name)
+  if not ok then return {ok = false, error = err or 'Could not remove that name.'} end
+  return {ok = true, names = namedStore.list(zone)}
+end)
+
 -- A living NPC's class short name, or nil when the client sends no playable class id.
 local function className(spawn)
   local id = spawn and spawn.class
@@ -194,7 +470,7 @@ if hs.hooks then
   }
 end
 
-local function projectTriune(server)
+function projectTriune(server)
   if type(server) ~= 'table' then return false end
   for _, key in ipairs({'world', 'name'}) do
     local value = server[key]

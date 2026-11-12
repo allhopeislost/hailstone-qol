@@ -84,3 +84,19 @@ uncommitted is part of the release. `--message` sets the commit message.
    tooling and generated release artifacts.
 4. Keep dependencies minimal: use the Lua/client APIs already available, and do not add a dependency solely for
    packaging or tests. Coordinate the persisted-config filename/module rather than guessing it.
+
+## Delegating to subagents
+
+When heavy work is split over subagents (each on its own files, against one written-down contract), put these
+guardrails in every brief — a model can otherwise spin for a long time in a verification loop that never changes
+its output (observed: ~20 minutes re-running an identical headless mock test after the actual edits were done):
+
+- Run each check at most twice. If the output is identical twice, stop and report instead of retrying ("no-progress
+  abort"). Timebox small tasks (~10 minutes): after that, keep what passes `luac -p` and finish with a summary.
+- For UI-only changes the required verification is `luac -p <file>` plus one `tools/check.sh` run. Do not build a
+  headless mock of `ui.*`/`hud.Dialog` to "test" windows — it does not reproduce the client and is where loops
+  happen; the real check is in-game.
+- Pick the model per task: cheap and fast (e.g. GLM flash) for UI-only or mechanical edits, a thorough one
+  (e.g. DeepSeek flash) for core logic, data parsing and test wiring.
+- On the coordinator's side: if a subagent has not touched any file for ~8-10 minutes, send it one follow-up
+  ("stop iterating, run `tools/check.sh` once, report") instead of waiting.
