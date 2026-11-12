@@ -6,7 +6,7 @@ supersedes it.
 
 ## Working rules
 
-- Code, comments and docs are in English; chat with the user in Dutch.
+- Code, comments and docs are in English\
 - Do not commit, push, publish or release unless asked. Never touch the client checkout or the signing key.
 - Never guess a client API or record field. Check `docs/client-api.md`; if it is not there or marked unverified,
   say so, and prefer a small in-game check (print the table's keys) over assuming.
