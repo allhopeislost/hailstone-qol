@@ -82,7 +82,9 @@ Zone lines are not available: the client has them (zone regions, `OP_SendZonepoi
 
 ## Capabilities
 
-The manifest declares `read, ui, extend, commands, actions, target, move`. `commands` and `actions` are needed for the
+The manifest declares `read, ui, extend, commands, actions, target, move, packets, chat`. `packets` lets pet chain
+observe pet orders; `chat` lets it send the Triune `#petcmd` orders through `/say`. The server must also allow these
+capabilities. `commands` and `actions` are needed for the
 windows' close box, icon chat-link, sockets and description links; without them those clicks silently do nothing.
 `target` and `move` are for FindWalk's Travel to: `/target` needs `target` and `/nav` needs `move` (docs/plugins.md in
 the client, "Capabilities"); every command is checked against the running code's bits.

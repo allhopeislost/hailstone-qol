@@ -13,7 +13,7 @@ import tempfile
 
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = "0.3.2"
+VERSION = "0.3.3"
 
 # The manifest's capability ceiling. `commands` lets the dialogs' close box
 # (and Esc/menu Close) hide the game window; `actions` lets the displays'
@@ -21,7 +21,7 @@ VERSION = "0.3.2"
 # links). Without them those calls silently do nothing on manager installs.
 # `target` and `move` are for the FindWalk window's Travel to button, which sends
 # `/target id N` and `/nav id N`; each command is checked against these bits.
-CAPS = "read,ui,extend,commands,actions,target,move,packets"
+CAPS = "read,ui,extend,commands,actions,target,move,packets,chat"
 
 # Keep this list explicit: the client package must not include tests, docs, this tool,
 # old packages, or generated manifests. `qol.lua` is user data in mq.configDir, not a

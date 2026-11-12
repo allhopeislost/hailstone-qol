@@ -365,3 +365,10 @@ list, the chain waits (does not stop) until the list runs out. The tick is wrapp
 in chat and stops, as the standalone script did.
 Why: in-game report — at the last remaining mob the pets did not go there, because the chain stopped as soon
 as next_mob() found nothing (the last mob was on the ignore list or was the current one).
+
+## D038 Pet chain needs chat permission for Triune orders
+Status: Accepted
+Recorded: 2026-11-12
+Decision: declare the `chat` capability in the add-on package alongside `packets`. Pet chain uses `/say` to send
+Triune pet orders, so an installed add-on needs both the declared capability and the server's permission.
+Why: the installed add-on could detect attacks but the client refused its follow-up `/say` commands.

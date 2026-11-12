@@ -30,7 +30,8 @@ A Hailstone add-on with small quality-of-life improvements for the **Modern UI**
 
 - **Pet chain**: `/petchain` (or Plugins → Pet chain in the menu) keeps sending your pets down your extended
   target list after a pet attack, until the list is empty or you order them back. `/petchain status`, `/petchain go`,
-  `/petchain group <all|class|swarm>`.
+  `/petchain group <all|class|swarm>`. Triune pet commands require the add-on's chat permission and a server that
+  permits it. An update adding this permission requires approval in the add-on manager.
 
 Every feature can be switched on or off under **Options → Plugins**.
 
