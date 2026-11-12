@@ -12,6 +12,7 @@ local DEFAULTS = {
   map_npcs = true,
   findwalk = true,
   named_tracker = true,
+  pet_chain = true,
 }
 
 local function defaults()

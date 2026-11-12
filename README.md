@@ -28,6 +28,10 @@ A Hailstone add-on with small quality-of-life improvements for the **Modern UI**
   named) even though they are not in the zone list. The windows resize from their edges and corner (the text
   scale stays put), and the divider between the named list and the drops list is draggable; both are remembered.
 
+- **Pet chain**: `/petchain` (or Plugins → Pet chain in the menu) keeps sending your pets down your extended
+  target list after a pet attack, until the list is empty or you order them back. `/petchain status`, `/petchain go`,
+  `/petchain group <all|class|swarm>`.
+
 Every feature can be switched on or off under **Options → Plugins**.
 
 ## Install

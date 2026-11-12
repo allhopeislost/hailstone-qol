@@ -25,6 +25,9 @@ Update this file whenever the add-on starts using, or stops using, a client func
 | `hs.spawn(id)`, `hs.player()` | target and map data | source |
 | `hs.spawns()` | every spawn in the zone, by id (FindWalk) | ingame |
 | `hs.zone_name(id)` | a zone's short name by id (the named tracker's zone key) | source |
+| `hs.xtarget(i)` | extended target slot i, 1-based: `{type, status, spawn_id, name}` (pet chain) | source; `hs.player()` also carries `xtarget_slots` |
+| `hs.on_packet(stream, dir, opcode, fn)` | watch packets (`zone`/`world`, `in`/`out`); fn(opcode, data); needs the `packets` capability (pet chain) | source |
+| `mq.TLO.*`, `mq.cmdf`, `mq.gettime` | TLO access (Spawn/Target/Me/Zone), formatted commands, ms clock (pet chain, ported from the standalone script); TLO needs `read` | source |
 | `hs.menu(label, command)` | the Plugins menu entry that runs `/findW` | ingame (hand install; the manifest's ceiling is not tested) |
 | `mq.bind('/findW', fn)` | the command that opens FindWalk | ingame |
 | `mq.cmd(line)` | `/target id N`, `/nav id N` (Travel to) | ingame (a hand-installed script runs with player rights) |

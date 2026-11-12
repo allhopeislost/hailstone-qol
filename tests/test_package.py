@@ -65,7 +65,8 @@ class PackageStagingTests(unittest.TestCase):
 
 class PackageOutputTests(unittest.TestCase):
     def test_caps_ceiling(self):
-        self.assertEqual(package.CAPS, "read,ui,extend,commands,actions,target,move")
+        # packets: the pet chain watches the outgoing pet orders with hs.on_packet
+        self.assertEqual(package.CAPS, "read,ui,extend,commands,actions,target,move,packets")
 
     def test_rejects_output_in_source_tree(self):
         with tempfile.TemporaryDirectory() as temp:

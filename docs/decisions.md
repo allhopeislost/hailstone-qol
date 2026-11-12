@@ -342,3 +342,15 @@ Decision: when a row of the /named window changes from not-seen to seen (spawned
 window script's fetchList by comparing each row's spawned flag with the previous read; blink marks are reset on
 zone switch and dropped for rows no longer listed.
 Why: the user wants a visible signal the moment a named is up, without watching the up/down dots.
+
+## D036 Pet chain integrated from the standalone petchain script
+Status: Accepted
+Recorded: 2026-11-12
+Decision: the standalone `scripts/petchain` script is ported into the add-on as `core/petchain.lua` with the
+`pet_chain` option (default on) in Options -> Plugins, the `/petchain` command and a Plugins menu entry. CAPS
+gains `packets` (hs.on_packet watches the outgoing pet orders, OP_PetCommands and the #petcmd say). Differences
+from the standalone script: no own main loop — the tick is driven per UI frame via the `petchain_tick`
+ui_function from `ui/modern/petchain.lua`, throttled inside the module; the /target wait is a pending state in
+the tick instead of a blocking mq.delay (a plugin call must not block); on/off lives in Options -> Plugins, the
+command only reports and drives go/group/status.
+Why: the user wants pet chain as a menu option of the QoL add-on instead of a separate script.

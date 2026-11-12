@@ -24,6 +24,7 @@ local features = {
   {name = 'map_npcs', label = 'Show all NPCs on the map'},
   {name = 'findwalk', label = 'Find window (/findW)'},
   {name = 'named_tracker', label = 'Named tracker (/named)'},
+  {name = 'pet_chain', label = 'Pet chain (/petchain)'},
 }
 
 if hs.option then
@@ -410,6 +411,30 @@ hs.ui_function('named_remove', function(zoneShort, name)
   local ok, err = namedStore.remove(zone, name)
   if not ok then return {ok = false, error = err or 'Could not remove that name.'} end
   return {ok = true, names = namedStore.list(zone)}
+end)
+
+-- Pet chain (core/petchain.lua, ported from the standalone petchain script): after a pet attack order, keep
+-- sending the pets down the extended target list. It watches the outgoing pet orders with hs.on_packet (needs
+-- the packets capability); its tick comes from the UI frame loop via petchain_tick, throttled inside.
+local petchain = require('core.petchain')
+local pet = petchain.attach(mq, hs, {
+  enabled = function() return settings.get('pet_chain') end,
+  say = function(text, color) pcall(hs.chat, '[Pet Chain] ' .. text, color or 15) end,
+})
+pcall(mq.bind, '/petchain', function(arg)
+  if not settings.get('pet_chain') then
+    pcall(hs.chat, 'QoL: pet chain is turned off; enable it under Options \xE2\x86\x92 Plugins.', 15)
+    return
+  end
+  pet.command(arg)
+end)
+pcall(hs.menu, 'Pet chain', '/petchain')
+
+-- Called every UI frame; the module throttles itself to its tick rate. Nil while the option is off.
+hs.ui_function('petchain_tick', function()
+  if not settings.get('pet_chain') then return nil end
+  pet.tick()
+  return nil
 end)
 
 -- A living NPC's class short name, or nil when the client sends no playable class id.
