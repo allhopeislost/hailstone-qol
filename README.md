@@ -4,7 +4,7 @@ A Hailstone add-on with small quality-of-life improvements for the **Modern UI**
 
 ## Features
 
-- **Target levels and class**: shows the level (and optionally the class) of living NPCs on nameplates and in the target window. Merchants, bankers and trainers are left out.
+- **Target levels and class**: shows the level (and optionally the class) of NPCs on nameplates and in the target window. Merchants, bankers and trainers are left out.
 - **Spell display**: a richer spell window with readable effects, casting details and spell IDs.
 - **Item display**: a richer item window with extra information such as base and tribute value, delay/damage ratio and lore.
 - **Other item versions** (Project Triune only, off by default): buttons to open the Enchanted or Legendary version of an item.
