@@ -71,6 +71,7 @@ assert(menuHasPet, 'the Plugins menu entry Pet chain runs /petchain')
 assert(type(functions.petchain_tick) == 'function', 'petchain_tick is registered')
 assert(type(packets[0x0159]) == 'function' and type(packets[0x2b2d]) == 'function',
   'the outgoing pet-order and say packets are hooked')
+assert(type(packets[0x6517]) == 'function', 'the incoming death packet is hooked')
 
 -- a mob on the extended target list, alive, not a pet, not mezzed
 spawnDefs[10] = { type = 'NPC', hp = 80, mezzed = nil, surname = '' }
@@ -169,5 +170,37 @@ assert(#commands == before and #cmdfs == cmdfsBefore, 'nothing while the option 
 assert(functions.petchain_tick() == nil, 'the tick answers nil while off')
 bound['/petchain']('status')
 assert(chats[#chats]:find('Options'), 'the command says where to turn it on: ' .. chats[#chats])
+
+-- A death packet for the current mob wakes the chain on the next frame even if the normal tick just ran.
+options.pet_chain.set(1)
+spawnDefs[30] = { type = 'NPC', hp = 100, surname = '' }
+spawnDefs[31] = { type = 'NPC', hp = 100, surname = '' }
+xtargets[1] = { type = 1, spawn_id = 30 }
+xtargets[2] = { type = 1, spawn_id = 31 }
+player.xtarget_slots = 2
+target = 30
+packets[0x0159](0x0159, string.pack('<I4I4', 2, 30))
+tick(300)
+local targetsBefore = #cmdfs
+local function deathPacket(id) return string.pack('<I4I4I4I4I4I4I4I4', id, 0, 0, 0, 0, 0, 0, 0) end
+packets[0x6517](0x6517, deathPacket(31)) -- unrelated death
+packets[0x6517](0x6517, string.pack('<I4', 30)) -- truncated packet
+tick(1)
+assert(#cmdfs == targetsBefore, 'unrelated and truncated death packets do not wake the chain')
+packets[0x6517](0x6517, deathPacket(30))
+assert(#cmdfs == targetsBefore, 'do not change target inside the packet hook')
+-- The client can still report the old mob alive until it finishes processing the packet.
+tick(1)
+assert(cmdfs[#cmdfs] == '/target id 31', 'current death immediately selects the next mob')
+target = 31
+local ordersBefore = #commands
+tick(1)
+assert(#commands == ordersBefore + 1 and commands[#commands] == '/pet attack',
+  'the confirmed target gets the order on the next frame')
+packets[0x0159](0x0159, string.pack('<I4I4', 28, 0))
+packets[0x6517](0x6517, deathPacket(31))
+targetsBefore = #cmdfs
+tick(1)
+assert(#cmdfs == targetsBefore, 'death after back off does not restart the chain')
 
 print('petchain ok')

@@ -19,6 +19,7 @@ local M = {}
 
 local OP_PET_COMMANDS = 0x0159
 local OP_CHANNEL_MESSAGE = 0x2b2d  -- net/opcodes_rof2.inc; the server's #petcmd goes out as a say
+local OP_DEATH = 0x6517             -- incoming death packet: first uint32 is the dead spawn's id
 -- net/pet_packets.h: kPetAttack 2, kPetFollow 4, kPetGuard 5, kPetBackOff 28, kPetGetLost 29
 local PET_ATTACK, PET_BACK_OFF, PET_FOLLOW, PET_GUARD, PET_GET_LOST = 2, 28, 4, 5, 29
 
@@ -44,6 +45,7 @@ function M.attach(mq, hs, opts)
   local kick = false                  -- /petchain go: send the order on the current mob at the next tick
   local pending = nil                 -- {id, since, count}: a /target id we wait for before the order goes out
   local lastTick = 0
+  local currentDead = false          -- process after the client handles the death packet
 
   local function now() return mq.gettime() end
 
@@ -80,7 +82,7 @@ function M.attach(mq, hs, opts)
 
   local function stop(why)
     if chaining and why then say(why) end
-    chaining, current, kick, pending = false, nil, false, nil
+    chaining, current, kick, pending, currentDead = false, nil, false, nil, false
     tries = {}
   end
 
@@ -148,7 +150,7 @@ function M.attach(mq, hs, opts)
   local function tick()
     if not enabled() or not chaining then return end
     local t = now()
-    if t - lastTick < TICK_MS then return end
+    if not currentDead and not pending and t - lastTick < TICK_MS then return end
     lastTick = t
     if mq.TLO.Me.Dead() == true then return stop('you died, stopped.') end
     local z = mq.TLO.Zone.ID()
@@ -161,6 +163,9 @@ function M.attach(mq, hs, opts)
       if current and alive(current) then send_pets(current, false); return end
     end
 
+    -- Do not retry a dead current target; the client has now processed its death packet.
+    if currentDead and pending and pending.id == current then pending = nil end
+
     -- A /target we are waiting for: the order goes out when it took; after TARGET_WAIT_MS it counts as failed.
     if pending then
       local p = pending
@@ -169,6 +174,7 @@ function M.attach(mq, hs, opts)
         send_order()
         if p.id ~= current then seen = false end
         current = p.id
+        currentDead = false
         watch_hp, watch_at = hp_of(p.id), now()
         if p.count then try(p.id) end
       elseif now() - p.since > TARGET_WAIT_MS then
@@ -186,7 +192,7 @@ function M.attach(mq, hs, opts)
 
     -- The client does not tell us what a pet is fighting, so "done" is the mob's death or it leaving the list (once
     -- it was on it). While it is up: wait as long as its health drops, else send the order again.
-    if current and alive(current) then
+    if current and not currentDead and alive(current) then
       local listed = on_list(current)
       if listed then seen = true end
       if listed or not seen then
@@ -208,7 +214,7 @@ function M.attach(mq, hs, opts)
     end
 
     local id = next_mob()
-    if id then send_pets(id, false); return end
+    if id then currentDead = false; send_pets(id, false); return end
     -- nothing eligible right now: if mobs are still on the list (all skipped for a while), wait for the
     -- ignore list to run out instead of stopping; only when the list is really empty is the chain done
     if #list_mobs(current) > 0 then return end
@@ -226,6 +232,7 @@ function M.attach(mq, hs, opts)
       if is_pet(sp) then return end
       style = how
       current = id
+      currentDead = false
       ignore[id] = nil
       seen = false
       watch_hp, watch_at = hp_of(id), now()
@@ -235,10 +242,21 @@ function M.attach(mq, hs, opts)
     chaining = true
     zone = mq.TLO.Zone.ID()
     current = id
+    currentDead = false
     tries = {}
     seen = false
     watch_hp, watch_at = 100, now()
   end
+
+  -- The hook runs before the client updates its world. Act on the next UI frame instead, so target changes cannot
+  -- interfere with the client's own death handling. Other deaths do not affect this chain.
+  pcall(hs.on_packet, 'zone', 'in', OP_DEATH, function(_, data)
+    if enabled() and chaining and current and #data >= 28 then
+      local id = string.unpack('<I4', data)
+      if id == current then currentDead = true end
+    end
+    return nil
+  end)
 
   -- An attack order from you starts the chain; back off / follow / guard stops it.
   pcall(hs.on_packet, 'zone', 'out', OP_PET_COMMANDS, function(_, data)

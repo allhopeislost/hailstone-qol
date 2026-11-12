@@ -372,3 +372,10 @@ Recorded: 2026-11-12
 Decision: declare the `chat` capability in the add-on package alongside `packets`. Pet chain uses `/say` to send
 Triune pet orders, so an installed add-on needs both the declared capability and the server's permission.
 Why: the installed add-on could detect attacks but the client refused its follow-up `/say` commands.
+
+## D039 Pet chain reacts to death packets
+Status: Accepted
+Recorded: 2026-11-12
+Decision: watch incoming death packets for the current mob and trigger the next selection on the next UI frame,
+after the client has processed the death. Check target confirmation each frame; retain the regular tick as fallback.
+Why: shorten the delay between kills without changing targets during the client's death-packet processing.

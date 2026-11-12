@@ -27,6 +27,7 @@ Update this file whenever the add-on starts using, or stops using, a client func
 | `hs.zone_name(id)` | a zone's short name by id (the named tracker's zone key) | source |
 | `hs.xtarget(i)` | extended target slot i, 1-based: `{type, status, spawn_id, name}` (pet chain) | source; `hs.player()` also carries `xtarget_slots` |
 | `hs.on_packet(stream, dir, opcode, fn)` | watch packets (`zone`/`world`, `in`/`out`); fn(opcode, data); needs the `packets` capability (pet chain) | source |
+| Incoming zone `OP_Death` (`0x6517`) | pet chain detects the current mob's death from the first little-endian uint32 (spawn ID); hook runs before the client handles the packet | source (reference client); ingame behavior unverified |
 | `mq.TLO.*`, `mq.cmdf`, `mq.gettime` | TLO access (Spawn/Target/Me/Zone), formatted commands, ms clock (pet chain, ported from the standalone script); TLO needs `read` | source |
 | `hs.menu(label, command)` | the Plugins menu entry that runs `/findW` | ingame (hand install; the manifest's ceiling is not tested) |
 | `mq.bind('/findW', fn)` | the command that opens FindWalk | ingame |
