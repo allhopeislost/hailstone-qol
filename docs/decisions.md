@@ -354,3 +354,14 @@ ui_function from `ui/modern/petchain.lua`, throttled inside the module; the /tar
 the tick instead of a blocking mq.delay (a plugin call must not block); on/off lives in Options -> Plugins, the
 command only reports and drives go/group/status.
 Why: the user wants pet chain as a menu option of the QoL add-on instead of a separate script.
+
+## D037 Pet chain: the last mob is never skipped, and the chain waits out the skip list
+Status: Accepted
+Recorded: 2026-11-12
+Decision: in core/petchain.lua a mob that reaches MAX_TRIES orders at full health (or MAX_TRIES failed
+targets) is put on the 60 s ignore list only when other mobs remain on the extended target list; the last
+remaining mob keeps getting the order. When no mob is eligible because all remaining ones are on the ignore
+list, the chain waits (does not stop) until the list runs out. The tick is wrapped in pcall and reports errors
+in chat and stops, as the standalone script did.
+Why: in-game report — at the last remaining mob the pets did not go there, because the chain stopped as soon
+as next_mob() found nothing (the last mob was on the ignore list or was the current one).

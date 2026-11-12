@@ -5,7 +5,8 @@
 -- Ported from the standalone petchain script into the QoL add-on. Differences: no own main loop (the tick comes
 -- from the UI frame loop via the petchain_tick ui_function, throttled to TICK_MS here), the option lives in
 -- Options -> Plugins (pet_chain), and the /target wait is a pending state instead of a blocking mq.delay, so the
--- tick never blocks a plugin call.
+-- tick never blocks a plugin call. A mob that is the last one on the list is never skipped for a
+-- minute, and the chain waits out the skip list instead of stopping while mobs remain.
 --
 -- /petchain               toggle on / off
 -- /petchain on|off        set it
@@ -85,19 +86,37 @@ function M.attach(mq, hs, opts)
 
   -- The next mob: a living NPC in an extended target slot, not a pet, not mezzed, not on the ignore list. The first
   -- in slot order, but one that is on me comes before one that is not (slot type 1 = auto hater).
-  local function next_mob()
+  -- every living, non-pet, non-mezzed mob on the extended target list, the ignore list not applied,
+  -- optionally except one id (the current one)
+  local function list_mobs(except)
+    local out = {}
     local slots = tonumber(hs.player() and hs.player().xtarget_slots) or 0
-    local best, best_hater
     for i = 1, slots do
       local x = hs.xtarget(i)
       local id = x and x.spawn_id or 0
-      if id ~= 0 and id ~= current and (ignore[id] or 0) < now() then
+      if id ~= 0 and id ~= except then
         local sp = mq.TLO.Spawn('id ' .. id)
         if sp() and alive(id) and not is_pet(sp) and sp.Mezzed() == nil then
-          local hater = x.type == 1
-          if not best or (hater and not best_hater) then
-            best, best_hater = id, hater
-          end
+          out[#out + 1] = id
+        end
+      end
+    end
+    return out
+  end
+
+  local function next_mob()
+    local best, best_hater
+    for _, id in ipairs(list_mobs(current)) do
+      if (ignore[id] or 0) < now() then
+        -- slot type 1 = auto hater: one that is on me comes before one that is not
+        local slots = tonumber(hs.player() and hs.player().xtarget_slots) or 0
+        local hater = false
+        for i = 1, slots do
+          local x = hs.xtarget(i)
+          if x and x.spawn_id == id then hater = x.type == 1 break end
+        end
+        if not best or (hater and not best_hater) then
+          best, best_hater = id, hater
         end
       end
     end
@@ -154,7 +173,8 @@ function M.attach(mq, hs, opts)
         if p.count then try(p.id) end
       elseif now() - p.since > TARGET_WAIT_MS then
         pending = nil
-        if try(p.id) >= MAX_TRIES then
+        -- a mob we cannot target is skipped for a minute, but never when it is the last one left
+        if try(p.id) >= MAX_TRIES and #list_mobs(p.id) > 0 then
           ignore[p.id] = now() + BLACKLIST_MS
           say('could not target mob ' .. p.id .. ', skipped for a minute.')
         else
@@ -174,7 +194,9 @@ function M.attach(mq, hs, opts)
         if hp < watch_hp then watch_hp, watch_at = hp, now(); return end
         if now() - watch_at < STALL_MS then return end
         local full = hp >= 100
-        if full and (tries[current] and tries[current].n or 0) >= MAX_TRIES then
+        -- at full health after MAX_TRIES orders the mob is skipped for a minute, but never when it is
+        -- the last one on the list: then the order just goes out again
+        if full and (tries[current] and tries[current].n or 0) >= MAX_TRIES and #list_mobs(current) > 0 then
           ignore[current] = now() + BLACKLIST_MS
           say('the pets do not reach mob ' .. current .. ', skipped for a minute.')
         else
@@ -186,8 +208,11 @@ function M.attach(mq, hs, opts)
     end
 
     local id = next_mob()
-    if not id then return stop() end
-    send_pets(id, false)
+    if id then send_pets(id, false); return end
+    -- nothing eligible right now: if mobs are still on the list (all skipped for a while), wait for the
+    -- ignore list to run out instead of stopping; only when the list is really empty is the chain done
+    if #list_mobs(current) > 0 then return end
+    return stop()
   end
 
   -- Starts a chain on the mob the order named, else your target. Already chaining: an order on another living NPC
@@ -269,7 +294,13 @@ function M.attach(mq, hs, opts)
     say('pet chain is ' .. (enabled() and 'on' or 'off') .. ' (Options -> Plugins). It starts with your next pet attack.')
   end
 
-  return { tick = tick, command = command }
+  -- one error in a tick must not stall the chain silently: report it and stop, as the standalone script did
+  local function tickSafe()
+    local ok, err = pcall(tick)
+    if not ok then stop('error: ' .. tostring(err)) end
+  end
+
+  return { tick = tickSafe, command = command }
 end
 
 return M

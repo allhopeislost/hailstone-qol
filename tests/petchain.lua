@@ -78,8 +78,8 @@ player.xtarget_slots = 1
 xtargets[1] = { type = 1, spawn_id = 10, name = 'a gnoll' }
 hs.xtarget = function(i) return xtargets[i] end
 
-local function tick()
-  now = now + 300 -- past the 250 ms tick rate
+local function tick(dt)
+  now = now + (dt or 300) -- default one 250 ms+ tick
   functions.petchain_tick()
 end
 
@@ -126,14 +126,46 @@ assert(#commands == before, 'back off stops the chain')
 bound['/petchain']('status')
 assert(chats[#chats]:find('off, idle') or chats[#chats]:find('on, idle'), 'status says idle after back off: ' .. chats[#chats])
 
+-- the last mob at full health is never skipped: the order keeps going out
+spawnDefs[20] = { type = 'NPC', hp = 100, mezzed = nil, surname = '' }
+xtargets[1] = { type = 1, spawn_id = 20, name = 'a zombie' }
+target = 20
+packets[0x0159](0x0159, string.pack('<I4I4', 2, 20)) -- chain starts on 20
+before = #commands
+for cycle = 1, 4 do
+  tick(16000) -- past the 15 s stall: the order is sent again
+  tick(300)   -- the target took: the pet order goes out
+end
+assert(#commands - before >= 4, 'the last mob keeps getting the order, never skipped: ' .. (#commands - before))
+
+-- with a second mob on the list, the stalling one is skipped after MAX_TRIES and the chain moves on
+spawnDefs[21] = { type = 'NPC', hp = 100, mezzed = nil, surname = '' }
+xtargets[2] = { type = 0, spawn_id = 21, name = 'a skeleton' }
+player.xtarget_slots = 2
+tick(16000)
+assert(cmdfs[#cmdfs] == '/target id 21', 'a skipped mob with another left: the chain moves on: ' .. tostring(cmdfs[#cmdfs]))
+target = 21
+tick(300)
+assert(#commands > before, 'the order goes out for the next mob')
+
+-- when only the skipped mob is left, the chain waits for the minute instead of stopping, then takes it again
+spawnDefs[21] = nil
+xtargets[2] = { type = 0, spawn_id = 0, name = '' }
+before = #commands
+tick(300)
+assert(#commands == before, 'no order while the only mob left is skipped for a while')
+tick(61000) -- the skip minute runs out
+assert(cmdfs[#cmdfs] == '/target id 20', 'after the minute the last mob is targeted again: ' .. tostring(cmdfs[#cmdfs]))
+
 -- the option off: the tick does nothing, the command says where to enable it
 options.pet_chain.set(0)
 spawnDefs[13] = { type = 'NPC', hp = 100, mezzed = nil, surname = '' }
 xtargets[1] = { type = 1, spawn_id = 13, name = 'a zombie' }
 packets[0x0159](0x0159, string.pack('<I4I4', 2, 13)) -- hook ignores it: not enabled
 before = #commands
+local cmdfsBefore = #cmdfs
 tick(); tick()
-assert(#commands == before and #cmdfs == 2, 'nothing while the option is off')
+assert(#commands == before and #cmdfs == cmdfsBefore, 'nothing while the option is off')
 assert(functions.petchain_tick() == nil, 'the tick answers nil while off')
 bound['/petchain']('status')
 assert(chats[#chats]:find('Options'), 'the command says where to turn it on: ' .. chats[#chats])
