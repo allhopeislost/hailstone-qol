@@ -9,7 +9,7 @@ A Hailstone add-on with small quality-of-life improvements for the **Modern UI**
 - **Item display**: a richer item window with extra information such as base and tribute value, delay/damage ratio and lore.
 - **Other item versions** (Project Triune only, off by default): buttons to open the Enchanted or Legendary version of an item.
 - **Target line on map and minimap**: draws a line from you to your target on the large map and on the minimap.
-- **All NPCs on the map**: shows every living NPC on the maps.
+- **All NPCs on the map**: shows every NPC on the map.
 - **FindWalk**: `/findW` List npc's and lets you navigate to them automatically
 
 Every feature can be switched on or off under **Options → Plugins**.
