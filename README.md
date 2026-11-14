@@ -13,7 +13,7 @@ A Hailstone add-on with small quality-of-life improvements for the **Modern UI**
 - **All NPCs on the map**: shows every living NPC on the maps.
 - **FindWalk**: `/findW` (or Plugins → Find in the menu) opens a window that lists the spawns in the zone and you can navigate to them
 - **Named tracker**: `/named` (or Plugins → Named in the menu) opens a window with the named NPCs of the zone you are in
-- **Pet chain**: `/petchain` (or Plugins → Pet chain in the menu) keeps sending your pets down your extended
+- **Pet chain**: Keeps sending your pets down your extended
   target list after a pet attack, until the list is empty or you order them back.
   
 Every feature can be switched on or off under **Options → Plugins**.
