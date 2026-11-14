@@ -2,6 +2,10 @@
 
 A Hailstone add-on with small quality-of-life improvements for the **Modern UI**.
 
+## Install
+
+In Hailstone's login-screen **Add-ons** panel, paste `https://github.com/allhopeislost/hailstone-qol` and choose **Install**.
+
 ## Features
 
 - **Target levels and class**: shows the level (and optionally the class) of NPCs on nameplates and in the target window. 
@@ -17,9 +21,7 @@ A Hailstone add-on with small quality-of-life improvements for the **Modern UI**
   
 Every feature can be switched on or off under **Options → Plugins**.
 
-## Install
 
-In Hailstone's login-screen **Add-ons** panel, paste `https://github.com/allhopeislost/hailstone-qol` and choose **Install**.
 
 ## License
 
