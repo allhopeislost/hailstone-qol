@@ -16,6 +16,7 @@ Update this file whenever the add-on starts using, or stops using, a client func
 | Name | Used for | Status |
 |---|---|---|
 | `hs.option{...}` | the options in Options → Plugins | source |
+| `ui.GetSetting(name)`, `ui.SetSetting(name, value)` | read/write the client's settings; QoL windows default `hud.esc.<screen>` on for Esc-to-close | source |
 | `hs.ui_function(name, fn)`, `eq.Plugin('script:qol')` | the windows call into `init.lua` | source |
 | `hs.hooks{nameplate = ...}` | level/class on nameplates | custom |
 | `hs.hooks{map_spawn = ...}` | NPCs on the map | source (client side in `lua_eq_map.cpp`) |
@@ -80,6 +81,15 @@ guildmasters (class `id - 19`), 40 and 66 bankers, 41, 59, 61, 67, 68 and 70 mer
 and corpses as well as NPCs (`npc`, `corpse`).
 
 Zone lines are not available: the client has them (zone regions, `OP_SendZonepoints`) but no Lua function returns them.
+
+## Esc-to-close
+
+`hud.Dialog` calls `lib/escape.lua`, which closes the frontmost escapable window on the client's
+CLOSE_TOP_WINDOW key (Escape unless rebound). Whether a screen is escapable is saved as `hud.esc.<screen>`
+("1"/"0"); while it is empty the client uses its own default-on list. The spell and item displays use the
+game's `SpellDisplayWindow` / `ItemDisplayWindow` screens and are in that list. The add-on's own screens are
+not, so `ui/modern/findwalk.lua` and `ui/modern/named.lua` write "1" while the setting is empty. An explicit
+"0" — set by the window's right-click menu item "Close with Esc" — is left alone. No new capability is needed.
 
 ## Capabilities
 

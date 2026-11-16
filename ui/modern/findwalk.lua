@@ -10,6 +10,17 @@ local C = T.color
 local WINDOW = "FindWalkWnd"
 local REFRESH = 0.5 -- seconds between two reads of the zone
 
+-- Esc closes this window like the client's own dialogs: lib/escape.lua reads hud.esc.<screen>. FindWalk's own
+-- screen is not in that library's default-on list, so fill the setting in while it is empty. A player who
+-- switched "Close with Esc" off in the window's menu has an explicit "0", which is left alone.
+local function defaultEsc(screen)
+  local setting = "hud.esc." .. screen
+  if ui.GetSetting(setting) == nil or ui.GetSetting(setting) == "" then
+    ui.SetSetting(setting, "1")
+  end
+end
+defaultEsc(WINDOW)
+
 -- Design pixels. The dialog adds 10 each side, so the window is 410 wide with the Role column and 360 without.
 local WIDTH_ROLE, WIDTH_PLAIN = 390, 340
 local SEARCH_H, CHECK_H, HEAD_H, LIST_H, STATUS_H, BUTTON_H, GAP = 28, 16, 22, 224, 14, 32, 8

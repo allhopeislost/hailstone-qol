@@ -21,6 +21,9 @@ In Hailstone's login-screen **Add-ons** panel, paste `https://github.com/allhope
   
 Every feature can be switched on or off under **Options → Plugins**.
 
+Every QoL window closes with **Esc**, like the client's own windows. Right-click a window's title bar to switch
+"Close with Esc" off for that window.
+
 
 
 ## License

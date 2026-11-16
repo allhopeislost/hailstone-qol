@@ -14,6 +14,18 @@ local EDIT_WINDOW = "NamedEditWnd" -- the list editor dialog
 local REFRESH = 0.5 -- seconds between two reads of the zone
 local BLINK_S = 3 -- a row blinks this long when its named comes up (not seen -> seen)
 
+-- Esc closes these windows like the client's own dialogs: lib/escape.lua reads hud.esc.<screen>. The add-on's
+-- screens are not in that library's default-on list, so fill the setting in while it is empty. A player who
+-- switched "Close with Esc" off in a window's menu has an explicit "0", which is left alone.
+local function defaultEsc(screen)
+  local setting = "hud.esc." .. screen
+  if ui.GetSetting(setting) == nil or ui.GetSetting(setting) == "" then
+    ui.SetSetting(setting, "1")
+  end
+end
+defaultEsc(WINDOW)
+defaultEsc(EDIT_WINDOW)
+
 -- Design pixels. The dialog adds 10 each side, so the tracker window is 410 wide and the editor 360. Both windows
 -- are resizable: these sizes are the defaults, and the named list (the editor's two lists) takes whatever height the
 -- window is dragged to; the text keeps its size.

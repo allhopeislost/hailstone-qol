@@ -6,6 +6,7 @@ local svgDir = arg and arg[1] == '--svg' and arg[2] or nil
 
 -- ---------------------------------------------------------------- a fake ui that records what is drawn
 local ops, clicks, hover = {}, {}, nil
+local settings = {} -- hud.esc.* and the other settings the window script reads
 local cursor, lastItem, nextWidth, scroll = {x = 0, y = 0}, nil, nil, 0
 local child, scrollbar = nil, false
 local fontPx = {[2] = 12, [3] = 13, [5] = 16, [6] = 20}
@@ -62,6 +63,8 @@ local tooltip, doubleClick
 local ui = {
   Mouse = {Left = 0},
   GetTime = function() return 0 end,
+  GetSetting = function(key) return settings[key] end,
+  SetSetting = function(key, value) settings[key] = value end,
   GetCursorScreenPos = function() return cursor.x, cursor.y - (child and scroll or 0) end,
   SetCursorScreenPos = function(x, y) cursor = {x = x, y = y} end,
   SetNextItemWidth = function(w) nextWidth = w end,
@@ -168,6 +171,7 @@ dofile = function(path)
 end
 realDofile('ui/modern/findwalk.lua')
 dofile = realDofile
+assert(settings['hud.esc.FindWalkWnd'] == '1', 'FindWalk closes with Esc by default')
 assert(drawWindow, 'the window registers itself')
 
 local function frame(opts)

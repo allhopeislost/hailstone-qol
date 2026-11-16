@@ -394,3 +394,17 @@ behavior change is that a buff appearing or disappearing can be shown up to 0.15
 forces an immediate buff scan.
 Rules out: caching mutable fields, width-dependent layout or map-target positions; adding options for
 internal caches.
+
+## D041 QoL dialogs close with Esc by default
+Status: Accepted
+Recorded: 2026-11-16
+Decision: each QoL window with its own screen (FindWalk `FindWalkWnd`, named `NamedWnd` and `NamedEditWnd`)
+sets `hud.esc.<screen>` to "1" while that setting is empty, so Esc closes it like the client's own dialogs.
+The spell and item displays need no change: they use the game's `SpellDisplayWindow` /
+`ItemDisplayWindow` screens, which are already in `lib/escape.lua`'s default-on list. Only an empty setting is
+written, so a player who unticked "Close with Esc" in a window's right-click menu keeps that choice.
+Why: the client's escape handling is already wired into `hud.Dialog`; the add-on's screens simply were not in
+the library's default-on list, so Esc did nothing until the player enabled it by hand. Adding an add-on
+switch for Esc would work against the "as few switches as possible" rule.
+Rules out: editing the client's `lib/escape.lua` (client source is reference material only); a new option;
+changing how the spell and item displays close.
