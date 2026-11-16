@@ -408,3 +408,20 @@ the library's default-on list, so Esc did nothing until the player enabled it by
 switch for Esc would work against the "as few switches as possible" rule.
 Rules out: editing the client's `lib/escape.lua` (client source is reference material only); a new option;
 changing how the spell and item displays close.
+
+## D043 Esc-to-close reads the key in the window, not hud.esc.*
+Status: Accepted
+Recorded: 2026-11-16
+Supersedes: D041 (setting the default alone did not close the windows ingame)
+Decision: FindWalk and the named windows read `ui.IsKeyPressed(ui.Key.Escape)` in their own draw body and close
+themselves when it is down, honouring `hud.esc.<screen>` as the on/off switch the right-click menu already
+writes. They still write the default "1" while that setting is empty, so the menu shows it on. A press closes
+only the window that was opened or clicked last; the open/front stamps are shared between the QoL window scripts
+in the UI's Lua globals. The spell and item displays are unchanged: their screens are in the client's own
+default-on list and are still closed by the client's escape library.
+Why: the client's `lib/escape.lua` reads `hud.esc.<screen>` in the **pack's** settings whenever a pack window
+draws first, but a plugin's `ui.SetSetting` writes `plugin.script:qol.hud.esc.<screen>` in its own namespace,
+which the pack never reads. Ingame the menu item showed on while Escape did nothing: a pack window consumed the
+press and the shared selection could not see our screens. Reading the key from ImGui bypasses that hand-off.
+Rules out: writing the pack's `hud.esc.*` (no plugin API can); depending on which window draws first; a new
+option or a change to the spell and item displays.

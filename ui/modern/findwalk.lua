@@ -10,9 +10,11 @@ local C = T.color
 local WINDOW = "FindWalkWnd"
 local REFRESH = 0.5 -- seconds between two reads of the zone
 
--- Esc closes this window like the client's own dialogs: lib/escape.lua reads hud.esc.<screen>. FindWalk's own
--- screen is not in that library's default-on list, so fill the setting in while it is empty. A player who
--- switched "Close with Esc" off in the window's menu has an explicit "0", which is left alone.
+-- Esc closes this window. The client's lib/escape.lua reads hud.esc.<screen> in the pack's settings, which a
+-- plugin cannot write, and consumes one press in the first pack window that draws. Read the key from ImGui
+-- here instead, so it works for a plugin window regardless of draw order. The right-click menu item still
+-- toggles hud.esc.<screen> in our namespace, so honour that choice. One press closes the last opened or
+-- clicked of our dialogs; the front state is shared with the other QoL window scripts through _G.
 local function defaultEsc(screen)
   local setting = "hud.esc." .. screen
   if ui.GetSetting(setting) == nil or ui.GetSetting(setting) == "" then
@@ -20,6 +22,32 @@ local function defaultEsc(screen)
   end
 end
 defaultEsc(WINDOW)
+
+local escClose = rawget(_G, "qolEscClose")
+if not escClose then
+  escClose = {seen = {}, front = {}}
+  function escClose.note(screen)
+    local frame, now = ui.GetFrameCount(), ui.GetTime()
+    if escClose.seen[screen] == nil or frame - escClose.seen[screen] > 1 then escClose.front[screen] = now end
+    if ui.IsWindowHovered(ui.HoveredFlags.ChildWindows)
+        and (ui.IsMouseClicked(ui.Mouse.Left) or ui.IsMouseClicked(ui.Mouse.Right)) then
+      escClose.front[screen] = now
+    end
+    escClose.seen[screen] = frame
+  end
+  function escClose.shouldClose(screen)
+    if not ui.IsKeyPressed(ui.Key.Escape) then return false end
+    local setting = ui.GetSetting("hud.esc." .. screen)
+    if setting ~= nil and setting ~= "" and setting ~= "1" then return false end -- unticked in the menu
+    local frame = ui.GetFrameCount()
+    local best, bestAt
+    for k, f in pairs(escClose.seen) do
+      if frame - f <= 1 and (bestAt == nil or escClose.front[k] > bestAt) then best, bestAt = k, escClose.front[k] end
+    end
+    return best == screen
+  end
+  rawset(_G, "qolEscClose", escClose)
+end
 
 -- Design pixels. The dialog adds 10 each side, so the window is 410 wide with the Role column and 360 without.
 local WIDTH_ROLE, WIDTH_PLAIN = 390, 340
@@ -259,5 +287,9 @@ ui.window("FindWalk", function()
     keepTitle = true,
     size = function() return state.hasRole and WIDTH_ROLE or WIDTH_PLAIN, CONTENT_H end,
     onClose = function() qol.findwalk_close() end,
-  }, function(x, y, w, h, s) body(x, y, w, h, s, qol) end)
+  }, function(x, y, w, h, s)
+    escClose.note(WINDOW)
+    if escClose.shouldClose(WINDOW) then qol.findwalk_close() end
+    body(x, y, w, h, s, qol)
+  end)
 end)

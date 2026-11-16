@@ -14,9 +14,11 @@ local EDIT_WINDOW = "NamedEditWnd" -- the list editor dialog
 local REFRESH = 0.5 -- seconds between two reads of the zone
 local BLINK_S = 3 -- a row blinks this long when its named comes up (not seen -> seen)
 
--- Esc closes these windows like the client's own dialogs: lib/escape.lua reads hud.esc.<screen>. The add-on's
--- screens are not in that library's default-on list, so fill the setting in while it is empty. A player who
--- switched "Close with Esc" off in a window's menu has an explicit "0", which is left alone.
+-- Esc closes these windows. The client's lib/escape.lua reads hud.esc.<screen> in the pack's settings, which a
+-- plugin cannot write, and consumes one press in the first pack window that draws. Read the key from ImGui
+-- here instead, so it works for a plugin window regardless of draw order. The right-click menu item still
+-- toggles hud.esc.<screen> in our namespace, so honour that choice. One press closes the last opened or
+-- clicked of our dialogs; the front state is shared with the other QoL window scripts through _G.
 local function defaultEsc(screen)
   local setting = "hud.esc." .. screen
   if ui.GetSetting(setting) == nil or ui.GetSetting(setting) == "" then
@@ -25,6 +27,32 @@ local function defaultEsc(screen)
 end
 defaultEsc(WINDOW)
 defaultEsc(EDIT_WINDOW)
+
+local escClose = rawget(_G, "qolEscClose")
+if not escClose then
+  escClose = {seen = {}, front = {}}
+  function escClose.note(screen)
+    local frame, now = ui.GetFrameCount(), ui.GetTime()
+    if escClose.seen[screen] == nil or frame - escClose.seen[screen] > 1 then escClose.front[screen] = now end
+    if ui.IsWindowHovered(ui.HoveredFlags.ChildWindows)
+        and (ui.IsMouseClicked(ui.Mouse.Left) or ui.IsMouseClicked(ui.Mouse.Right)) then
+      escClose.front[screen] = now
+    end
+    escClose.seen[screen] = frame
+  end
+  function escClose.shouldClose(screen)
+    if not ui.IsKeyPressed(ui.Key.Escape) then return false end
+    local setting = ui.GetSetting("hud.esc." .. screen)
+    if setting ~= nil and setting ~= "" and setting ~= "1" then return false end -- unticked in the menu
+    local frame = ui.GetFrameCount()
+    local best, bestAt
+    for k, f in pairs(escClose.seen) do
+      if frame - f <= 1 and (bestAt == nil or escClose.front[k] > bestAt) then best, bestAt = k, escClose.front[k] end
+    end
+    return best == screen
+  end
+  rawset(_G, "qolEscClose", escClose)
+end
 
 -- Design pixels. The dialog adds 10 each side, so the tracker window is 410 wide and the editor 360. Both windows
 -- are resizable: these sizes are the defaults, and the named list (the editor's two lists) takes whatever height the
@@ -542,7 +570,11 @@ ui.window("NamedTracker", function()
     size = function() return WIDTH, CONTENT_H end,
     resizable = { MIN_W, MIN_H },
     onClose = function() qol.named_close() end,
-  }, function(x, y, w, h, s) body(x, y, w, h, s, qol) end)
+  }, function(x, y, w, h, s)
+    escClose.note(WINDOW)
+    if escClose.shouldClose(WINDOW) then qol.named_close() end
+    body(x, y, w, h, s, qol)
+  end)
 end)
 
 ui.window("NamedEdit", function()
@@ -569,5 +601,9 @@ ui.window("NamedEdit", function()
     size = function() return EDIT_WIDTH, editContentH() end,
     resizable = { EDIT_MIN_W, EDIT_MIN_H },
     onClose = function() qol.named_edit_set(false) end,
-  }, function(x, y, w, h, s) editBody(x, y, w, h, s, qol) end)
+  }, function(x, y, w, h, s)
+    escClose.note(EDIT_WINDOW)
+    if escClose.shouldClose(EDIT_WINDOW) then qol.named_edit_set(false) end
+    editBody(x, y, w, h, s, qol)
+  end)
 end)

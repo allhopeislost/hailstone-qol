@@ -63,6 +63,12 @@ local tooltip, doubleClick
 local ui = {
   Mouse = {Left = 0},
   GetTime = function() return 0 end,
+  GetFrameCount = function() return 0 end,
+  IsKeyPressed = function() return false end,
+  Key = {Escape = 'Escape'},
+  IsWindowHovered = function() return false end,
+  HoveredFlags = {ChildWindows = 1},
+  IsMouseClicked = function() return false end,
   GetSetting = function(key) return settings[key] end,
   SetSetting = function(key, value) settings[key] = value end,
   GetCursorScreenPos = function() return cursor.x, cursor.y - (child and scroll or 0) end,
