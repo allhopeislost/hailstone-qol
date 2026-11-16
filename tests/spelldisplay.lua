@@ -1,6 +1,6 @@
 local realDofile = dofile
 local displayed, extras, ids, children = {}, {}, {}, {}
-local lines, rects = 0, 0
+local lines, rects, spellViewCalls = 0, 0, 0
 local enabled, pluginAvailable, currentId = true, true, 701
 local colors = {text = {1, 1, 1, 1}, muted = {.5, .5, .5, 1}, ink = {0, 0, 0, 1}}
 local drawn, inline = {}, {}
@@ -43,6 +43,7 @@ eq = {
     assert(name == 'script:qol')
     if not pluginAvailable then return nil end
     return {spell_view = function(id)
+      spellViewCalls = spellViewCalls + 1
       assert(id == currentId)
       if enabled then return {metadata = 'Spell ID: ' .. id .. '\nMana: 40\nClasses: BST 11\nCast: 6.50s\nRecovery: 1.50s\nRecast: 1.50s',
         effects = {{name = 'Accuracy', min = '+10%', min_level = 11, skill = '1H Blunt', scale = '+1% per 2 levels'},
@@ -83,6 +84,7 @@ local function unchanged()
   assert(children[#children][3] == 246)
 end
 enabled = false
+currentId = 999 -- a fresh id: its nil spell_view result must still take the no-details fallback
 unchanged()
 enabled, currentId = true, nil
 unchanged()
@@ -90,4 +92,27 @@ eq.DisplaySpellId = nil
 unchanged()
 pluginAvailable = false
 unchanged()
+
+-- Cached preparation keyed by spell id: a spell switch must immediately show the new spell, and
+-- repeated frames for one id must reuse the cache while still drawing the spell-specific extra text.
+pluginAvailable = true
+eq.DisplaySpellId = function(instance) ids[#ids + 1] = instance return currentId end
+currentId, enabled = 801, true
+local function spellText()
+  local from = #extras
+  windows['Spell Display']()
+  return table.concat(extras, '|', from + 1)
+end
+local calls = spellViewCalls
+assert(spellText():find('Spell ID: 801', 1, true))
+assert(spellViewCalls == calls + 1) -- prepared once for the new id
+calls = spellViewCalls
+assert(spellText():find('Spell ID: 801', 1, true))
+assert(spellViewCalls == calls) -- reused next frame, still drawn
+currentId = 802
+assert(spellText():find('Spell ID: 802', 1, true))
+assert(spellViewCalls == calls + 1) -- the new id is prepared once
+calls = spellViewCalls
+assert(spellText():find('Spell ID: 802', 1, true))
+assert(spellViewCalls == calls) -- reused again
 print('spell display custom client contract: ok')

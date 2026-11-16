@@ -7,6 +7,7 @@ local T = hud.T
 local C = T.color
 local WINDOW = "TargetWindow"
 local MAX_BUFFS = 85
+local BUFF_SCAN_INTERVAL = 0.15
 
 -- The con colour the game tints the target box with (nil: the target does not con, yourself or a corpse).
 local function conColor()
@@ -23,9 +24,13 @@ for i = 0, MAX_BUFFS - 1 do
   IDS[i + 1] = "Buff" .. i
   HITS[i + 1] = "##tbBuff" .. i
 end
-local buffs, nBuffs = {}, 0
+local buffs, nBuffs, lastBuffScan = {}, 0, nil
 
 local function targetBuffs()
+  -- scanning all MAX_BUFFS slots is costly, so refresh only every BUFF_SCAN_INTERVAL seconds
+  local now = ui.GetTime()
+  if lastBuffScan and now - lastBuffScan < BUFF_SCAN_INTERVAL then return end
+  lastBuffScan = now
   nBuffs = 0
   for i = 1, MAX_BUFFS do
     local spell, ms, name, good = eq.BuffSlot(WINDOW, IDS[i])
@@ -40,6 +45,10 @@ local function targetBuffs()
       -- the time left on it (T.Duration), formatted again only when what it shows changes
       local key = (not ms or ms < 0 or ms >= 100 * 3600000) and -1 or math.floor(ms / 1000)
       if b.durKey ~= key then b.durKey, b.duration = key, T.Duration(ms) end
+      -- icon art, cached on the record so body() does not ask the client for it every frame
+      local tex, u0, v0, u1, v1 = eq.ChildArt(WINDOW, b.id, "decal")
+      if type(tex) ~= "userdata" then tex = nil end
+      b.tex, b.u0, b.v0, b.u1, b.v1 = tex, u0, v0, u1, v1
     end
   end
 end
@@ -54,7 +63,12 @@ local function read()
   local f = ui.GetFrameCount()
   if f == frame then return end
   frame = f
-  name = eq.Label(28) or ""
+  local newName = eq.Label(28) or ""
+  if newName ~= name then
+    lastBuffScan = nil
+    nBuffs = 0
+  end
+  name = newName
   if name ~= "" then targetBuffs() else nBuffs = 0 end
   tot, totText, totRaw = eq.Gauge(27)
   hasTot = totRaw ~= nil and totRaw ~= -1 and totText and totText ~= ""
@@ -141,9 +155,7 @@ local function body(x, y, w, h, s)
     local col, row = (i - 1) % PER_ROW, (i - 1) // PER_ROW
     local ix = x + col * (ICON + GAP) * s
     local yy = iy + row * (ICON + GAP) * s
-    local tex, u0, v0, u1, v1 = eq.ChildArt(WINDOW, b.id, "decal")
-    if type(tex) ~= "userdata" then tex = nil end
-    T.Icon(ix, yy, ICON * s, s, tex, u0, v0, u1, v1, b.good and C.good or C.bad, { radius = 4 })
+    T.Icon(ix, yy, ICON * s, s, b.tex, b.u0, b.v0, b.u1, b.v1, b.good and C.good or C.bad, { radius = 4 })
     T.Hit(b.hit, ix, yy, ix + ICON * s, yy + ICON * s)
     if ui.IsItemHovered() then
       ui.SetTooltip(b.name .. "\n" .. T.LongDuration(b.ms))

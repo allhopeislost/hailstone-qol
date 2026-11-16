@@ -25,7 +25,8 @@ package.preload.hailstone = function()
 end
 package.preload.mq = function()
   return {
-    TLO = {Target = {ID = function() return spawn and 10 end}},
+    -- A different spawn record is a different target id: target_name caches by id + switches.
+    TLO = {Target = {ID = function() return spawn and (spawn.target_id or 10) end}},
     pickle = function(path, value)
       assert(path == 'qol.lua')
       if failSave then error('disk unavailable') end
@@ -59,7 +60,7 @@ assert(functions.target_name('a rat') == 'a rat [12]')
 assert(nameplate(spawn, 'a rat') == 'a rat [12]')
 
 -- The target window adds the class with the same single switch as the nameplates.
-spawn = {npc = true, level = 12, class = 2}
+spawn = {npc = true, level = 12, class = 2, target_id = 11}
 assert(functions.target_name('a rat') == 'a rat [12 CLR]')
 options.target_level.set(0)
 assert(functions.target_name('a rat') == 'a rat [CLR]')
@@ -68,9 +69,9 @@ assert(functions.target_name('a rat') == 'a rat')
 options.target_level.set(1)
 assert(functions.target_name('a rat') == 'a rat [12]')
 options.npc_class.set(1)
-spawn = {npc = true, level = 12}
+spawn = {npc = true, level = 12, target_id = 12}
 assert(functions.target_name('a rat') == 'a rat [12]')
-spawn = {npc = true, corpse = true, level = 12, class = 2}
+spawn = {npc = true, corpse = true, level = 12, class = 2, target_id = 13}
 assert(functions.target_name('a corpse') == 'a corpse')
 
 options.spell_info.set(0)

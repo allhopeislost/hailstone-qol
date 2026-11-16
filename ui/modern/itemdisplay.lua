@@ -24,11 +24,20 @@ for c = 1, 3 do
   CELL_IDS[c] = {}
   for r = 1, ROWS do CELL_IDS[c][r] = { "IDW_Row" .. r .. "Col" .. c .. "Stat", "IDW_Row" .. r .. "Col" .. c .. "Value" } end
 end
+-- The socket rows and their InvisibleButton ids, made once (the button id must not be concatenated per frame).
 local SOCKET_IDS = {}
+local SOCKET_BUTTON_IDS = {}
+local function socketIds(screen, item, desc)
+  local sock = "##sock" .. item
+  SOCKET_BUTTON_IDS[item] = sock
+  return { screen = screen, item = item, desc = desc, sock = sock }
+end
 for n = 1, 6 do
   local p = "IDW_Socket_Slot_" .. n
-  SOCKET_IDS[n] = { screen = p .. "_Screen", item = p .. "_Item", desc = p .. "_Description" }
+  SOCKET_IDS[n] = socketIds(p .. "_Screen", p .. "_Item", p .. "_Description")
 end
+-- the appearance socket is drawn separately but its button id is needed here too
+socketIds("IDW_Appearance_Socket_Screen", "IDW_Appearance_Socket_Item", "IDW_Appearance_Socket_Description")
 
 -- Other item versions: NMS items use the base id + 1,000,000 for Enchanted and + 2,000,000 for
 -- Legendary. Only those three tiers are accepted; there is no modulo or wrapping for other ids.
@@ -269,9 +278,12 @@ local function description(win, raw, width)
     c = { raw = raw, lines = stml.Lines(raw, C.text) }
     stmlCache[win] = c
   end
-  for _, line in ipairs(c.lines) do
-    stml.DrawLine(line, width, function(link) eq.StmlLink(win, "ItemDescription", link[1], link[2]) end)
+  local onLink = c.onLink
+  if not onLink then
+    onLink = function(link) eq.StmlLink(win, "ItemDescription", link[1], link[2]) end
+    c.onLink = onLink
   end
+  for _, line in ipairs(c.lines) do stml.DrawLine(line, width, onLink) end
   return #c.lines
 end
 
@@ -289,17 +301,28 @@ local function socketText(win, id, width)
     c = { raw = raw, lines = stml.Lines(raw, C.text) }
     socketCache[key] = c
   end
-  for _, line in ipairs(c.lines) do stml.DrawLine(line, width, function(link) eq.StmlLink(win, id, link[1], link[2]) end) end
+  local onLink = c.onLink
+  if not onLink then
+    onLink = function(link) eq.StmlLink(win, id, link[1], link[2]) end
+    c.onLink = onLink
+  end
+  for _, line in ipairs(c.lines) do stml.DrawLine(line, width, onLink) end
 end
 
+local sendCache = {}
 local function socketButton(win, id, size, s)
   local x, y = ui.GetCursorScreenPos()
-  ui.InvisibleButton("##sock" .. id, size, size)
+  ui.InvisibleButton(SOCKET_BUTTON_IDS[id], size, size)
   local key, hov = ui.GetItemID(), ui.IsItemHovered()
   local tex, u0, v0, u1, v1 = eq.ChildArt(win, id, "decal")
   if tex == false or type(tex) == "string" then tex = nil end
   T.Icon(x, y, size, s, tex, u0, v0, u1, v1, hov and C.accent or nil, RADIUS5)
-  local function send(phase, outside) eq.ClickChild(win, id, phase, outside) end
+  local ck = win .. "\0" .. id
+  local send = sendCache[ck]
+  if not send then
+    send = function(phase, outside) eq.ClickChild(win, id, phase, outside) end
+    sendCache[ck] = send
+  end
   if ui.IsItemClicked(ui.Mouse.Left) then
     send("left")
   elseif ui.IsItemClicked(ui.Mouse.Right) and not ui.GetIO().alt then
@@ -349,7 +372,7 @@ end
 -- every line and cell, so they are read again only when what the body reads every frame anyway changes (the item's
 -- icon, the Modified label, the description) or its name line does, when the Modified box is clicked here, and
 -- otherwise every REREAD seconds (the game builds a shown item's display again at most once a second).
-local REREAD = 0.25
+local REREAD = 0.5
 local parsed = {}
 local function readItem(win, mod, desc, tex, u0, v0)
   local name = eq.WindowText(win, INFO_IDS[1])
@@ -420,6 +443,23 @@ local function versionControls(win, sourceId, plugin, s, width)
   status = versionStatus[win]
   if status then ui.TextWrapped(status.text) end
   ui.PopFont()
+end
+
+-- The game's English info string depends only on the item's id, so build it once per id rather than every
+-- frame. A sentinel records a nil result so an unchanged id is not re-fetched when the plugin has no text.
+local INFO_NIL = {}
+local infoCache = {}
+local function itemInfo(plugin, data)
+  if not plugin or not data then return nil end
+  local id = data.id
+  if id == nil then return plugin.item_info(data) end
+  local cached = infoCache[id]
+  if cached == nil then
+    cached = plugin.item_info(data)
+    infoCache[id] = cached == nil and INFO_NIL or cached
+  end
+  if cached == INFO_NIL then return nil end
+  return cached
 end
 
 local function body(win, w, h, s)
@@ -509,7 +549,7 @@ local function body(win, w, h, s)
     description(win, descRaw, cw)
     ui.PopFont()
   end
-  local extra = plugin and data and plugin.item_info(data)
+  local extra = itemInfo(plugin, data)
   if extra then
     W.Heading("Additional information")
     ui.PushFont(T.font.small)

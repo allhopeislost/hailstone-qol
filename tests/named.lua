@@ -42,6 +42,14 @@ assert(zones[2].current == false)
 zones = named.zoneList(data, 'not_a_zone')
 assert(zones[1].short == 'beholder', 'an unknown current zone is simply not first')
 assert(#named.zoneList(nil, 'x') == 0 and #named.zoneList({}, 'x') == 0, 'no data, no zones')
+-- the immutable-data cache: same data + current zone hands back the identical list, while a
+-- different current zone or a different data table gets its own (no cross-contamination).
+local zoneListA = named.zoneList(data, 'gukbottom')
+assert(zoneListA == named.zoneList(data, 'gukbottom'), 'zoneList is cached per data + current')
+assert(zoneListA ~= named.zoneList(data, 'not_a_zone'), 'a different current zone has its own list')
+local otherZoneData = { zones = { only = { long = 'Only', named = {} } }, items = {} }
+assert(#named.zoneList(otherZoneData, 'only') == 1
+  and named.zoneList(otherZoneData, 'only')[1].short == 'only', 'a second data table has its own zones')
 
 -- namedOfZone: the zone's named as records with the item name filled in; nil when unknown.
 local guk = named.namedOfZone(data, 'gukbottom')
@@ -51,6 +59,17 @@ assert(guk[1].level == 42 and guk[1].drops[1].id == 1365 and guk[1].drops[1].cha
 assert(guk[1].drops[1].item == 'Flowing Black Silk Sash', 'the item name comes from items')
 assert(named.namedOfZone(data, 'nowhere') == nil, 'an unknown zone has no entry')
 assert(named.namedOfZone(data, nil) == nil and named.namedOfZone(data, 5) == nil)
+-- the immutable-data cache: repeated calls share one list, a second data table is isolated,
+-- and even the cached "no such zone" result still answers nil.
+assert(guk == named.namedOfZone(data, 'gukbottom'), 'namedOfZone returns the same list twice')
+assert(named.namedOfZone(data, 'nowhere') == nil, 'a cached unknown zone still answers nil')
+local otherNamedData = { zones = { gukbottom = { long = 'G', named = {
+  { name = 'z_zebra', level = 9, drops = {} },
+} } }, items = {} }
+local otherNamed = named.namedOfZone(otherNamedData, 'gukbottom')
+assert(otherNamed and otherNamed[1].name == 'z_zebra' and otherNamed ~= guk,
+  'a different data table does not reuse the cached list')
+assert(otherNamed == named.namedOfZone(otherNamedData, 'gukbottom'), 'it is cached on its own')
 
 -- suggestions: the zone's named that are not tracked yet, by key; tracked may be a list or a set.
 local suggestionData = {
@@ -134,6 +153,29 @@ result = named.rows(rowData, zoneSpawns, nil, 'guk', 'guk', {})
 assert(rowOf(result.rows, 'a alpha').dist == nil, 'no player record: no distances')
 assert(named.rows(rowData, nil, nil, 'guk', '', {}).rows ~= nil
   and #named.rows(rowData, nil, nil, 'guk', '', {}).rows == 0, 'an empty zone lists nothing')
+
+-- rows builds one spawn index per refresh; a hand-typed substring name must pick the same
+-- spawned/id/dist as the nearest-match algorithm, ignoring corpses and non-NPCs.
+local subSpawns = {
+  { id = 11, name = 'a_frenzied_ghoul', npc = true, x = 40, y = 0, z = 0 },
+  { id = 12, name = 'a_frenzied_ghoul02', npc = true, x = 5, y = 0, z = 0 },
+  { id = 13, name = 'a_frenzied_ghoul', npc = true, corpse = true, x = 1, y = 0, z = 0 },
+  { id = 14, name = 'some other mob', npc = true, x = 2, y = 0, z = 0 },
+}
+local me = { x = 0, y = 0, z = 0 }
+local subRow = rowOf(named.rows(rowData, subSpawns, me, 'guk', 'guk', { 'frenzied' }).rows, 'frenzied')
+assert(subRow and subRow.spawned == true and subRow.id == 12 and subRow.dist == 5,
+  'rows picks the nearest living spawn for a substring name: ' .. tostring(subRow and subRow.id))
+local subMatch = named.matchSpawn(subSpawns, me, 'frenzied')
+assert(subMatch and subMatch.id == 12, 'the public matchSpawn agrees with the indexed rows')
+-- D029: an exact match beats a nearer substring match, also through the rows index.
+local exactSpawns = {
+  { id = 21, name = 'frenzied', npc = true, x = 50, y = 0, z = 0 }, -- exact, far
+  { id = 22, name = 'a_frenzied_ghoul', npc = true, x = 2, y = 0, z = 0 }, -- substring, near
+}
+local exactRow = rowOf(named.rows(rowData, exactSpawns, me, 'guk', 'guk', { 'frenzied' }).rows, 'frenzied')
+assert(exactRow and exactRow.spawned == true and exactRow.id == 21 and exactRow.dist == 50,
+  'an exact match wins over a nearer substring match: ' .. tostring(exactRow and exactRow.id))
 
 print('named helpers ok')
 

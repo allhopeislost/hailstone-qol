@@ -54,7 +54,14 @@ local state = {
   split = nil, -- the divider between the named list and the drops list (design px), from named_split() once
   blink = {}, -- row name -> time its named first showed up (not seen -> seen), for the blink highlight
   wasSpawned = {}, -- row name -> whether it was up at the last read
+  upCount = 0, -- how many rows are up, counted in fetchList so body need not rescan every frame
 }
+
+-- A chance as a short percentage: %g keeps whole numbers whole and repeats no useless digits.
+local function chanceText(chance)
+  if type(chance) ~= "number" then return DASH end
+  return string.format("%g%%", chance)
+end
 
 -- The zone's entries, the tracked list and the rows, at most every REFRESH seconds.
 local function fetchList(qol)
@@ -72,12 +79,17 @@ local function fetchList(qol)
   -- a named that just came up (not up at the last read, spawned now) gets a blink mark for BLINK_S seconds
   local now = ui.GetTime()
   local seen = {}
-  for _, row in ipairs(result.rows or {}) do
+  local up = 0
+  for i, row in ipairs(result.rows or {}) do
+    row.hit = "##nmr" .. i -- hit ids are by row index, precomputed here instead of per frame in body
+    row.xHit = "##nmx" .. i
+    if row.spawned then up = up + 1 end -- same count body's old per-frame loop made: all rows, truthy spawned
     if row.name then
       if row.spawned and not state.wasSpawned[row.name] then state.blink[row.name] = now end
       seen[row.name] = row.spawned == true
     end
   end
+  state.upCount = up
   for name in pairs(state.blink) do
     if not seen[name] then state.blink[name] = nil end -- row no longer listed
   end
@@ -99,7 +111,20 @@ local function fetchDrops(qol)
   local result = qol.named_drops(state.zone, name)
   state.dropsFor = name
   if type(result) ~= "table" then state.drops = nil return end
-  state.drops = result.drops or {}
+  local source = result.drops or {}
+  local drops = {} -- our own list of shallow copies: named_drops may hand back a shared cached table
+  for i, drop in ipairs(source) do
+    if type(drop) == "table" then
+      local copy = {}
+      for k, v in pairs(drop) do copy[k] = v end -- copy every field (id, chance, item, and any future ones)
+      copy.hit = "##nmd" .. i -- by index, just like the row ids
+      copy.chanceText = chanceText(drop.chance) -- format once per fetch, not once per frame
+      drops[i] = copy
+    else
+      drops[i] = drop
+    end
+  end
+  state.drops = drops
 end
 
 -- Target an up named; a refusal is shown in the status line.
@@ -147,12 +172,6 @@ end
 local function zoneLabel(zone)
   if not zone then return "Zone..." end
   return zone.long .. " (" .. zone.short .. ")"
-end
-
--- A chance as a short percentage: %g keeps whole numbers whole and repeats no useless digits.
-local function chanceText(chance)
-  if type(chance) ~= "number" then return DASH end
-  return string.format("%g%%", chance)
 end
 
 -- An inset panel like findwalk's list: the inset rectangle with its faint outline.
@@ -240,11 +259,12 @@ local function body(cx, cy, w, h, s, qol)
   local scroll = ui.GetScrollY()
   local first = math.max(1, math.floor(scroll / rowH) + 1)
   local last = math.min(n, math.ceil((scroll + lh) / rowH) + 1)
+  local now = ui.GetTime() -- one clock read per frame for all rows' blink, not one per row
   for i = first, last do
     local row = rows[i]
     local ry = oy + (i - 1) * rowH
     local selected = row.name ~= nil and row.name == state.selected
-    if T.Hit("##nmr" .. i, ox, ry, right, ry + rowH) then
+    if T.Hit(row.hit, ox, ry, right, ry + rowH) then
       state.selected, state.selectedName = row.name, row.display or row.name
       state.drops, state.dropsDirty, state.error = nil, true, nil
       if row.spawned then target(qol, row.id) end
@@ -261,14 +281,14 @@ local function body(cx, cy, w, h, s, qol)
     -- blink for BLINK_S seconds when the named just came up (not seen -> seen)
     local blinkAt = state.blink[row.name]
     if blinkAt then
-      local t = ui.GetTime() - blinkAt
+      local t = now - blinkAt
       if t < BLINK_S and math.floor(t / 0.25) % 2 == 0 then
         ui.DrawRectFilled(ox, ry, right, ry + rowH, C.accent[1], C.accent[2], C.accent[3], 0.38, 0)
       end
     end
     -- the remove "x" at the row's right edge (its own hit box, submitted after the row's so it wins
     -- where they overlap; the row click still selects/targets)
-    if T.Hit("##nmx" .. i, xR - X_W * s, ry, xR, ry + rowH) then
+    if T.Hit(row.xHit, xR - X_W * s, ry, xR, ry + rowH) then
       hideRow(qol, row)
     end
     local xHovered = ui.IsItemHovered()
@@ -334,7 +354,7 @@ local function body(cx, cy, w, h, s, qol)
   for i = 1, dn do
     local drop = drops[i]
     local ry = doy + (i - 1) * rowH
-    if T.Hit("##nmd" .. i, dox, ry, bright, ry + rowH) then openItem(qol, drop.id) end
+    if T.Hit(drop.hit, dox, ry, bright, ry + rowH) then openItem(qol, drop.id) end
     local hovered = ui.IsItemHovered()
     if hovered then
       ui.DrawRectFilled(dox, ry, bright, ry + rowH, C.ink[1], C.ink[2], C.ink[3], 0.10, 0)
@@ -343,7 +363,7 @@ local function body(cx, cy, w, h, s, qol)
     local ty = ry + (rowH - textH) / 2
     local label = drop.item or ("#" .. tostring(drop.id))
     T.Text(dox + pad, ty, T.Fit(label, itemR2 - (dox + pad), T.font.small), C.link, T.font.small)
-    T.Text(itemR, ty, chanceText(drop.chance), C.muted, T.font.small, "right")
+    T.Text(itemR, ty, drop.chanceText, C.muted, T.font.small, "right")
   end
   if dn == 0 then
     local empty = state.selected and "No known drops for this name." or "Select a named to see its drops."
@@ -355,10 +375,7 @@ local function body(cx, cy, w, h, s, qol)
   local sy = q1 + GAP * s
   local _, stH = T.TextSize("Ag", T.font.tiny)
   local ty = sy + (STATUS_H * s - stH) / 2
-  local up = 0
-  for i = 1, n do
-    if rows[i].spawned then up = up + 1 end
-  end
+  local up = state.upCount or 0 -- counted in fetchList, so no full rescan every frame
   local left = list.current and string.format("%d of %d up in %s", up, n, state.zone) or (list.long or state.zone)
   T.Text(cx, ty, left, C.faint, T.font.tiny)
   local rightText, rightColor = "Nothing selected", C.faint

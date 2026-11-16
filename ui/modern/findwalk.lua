@@ -17,6 +17,9 @@ local PANEL_H = 1 + 4 + HEAD_H + LIST_H + 1
 local CONTENT_H = SEARCH_H + GAP + CHECK_H + GAP + PANEL_H + GAP + STATUS_H + GAP + BUTTON_H
 local COL_ROLE, COL_LVL, COL_DIST, COL_GAP, ROW_PAD = 70, 40, 54, 10, 8
 
+-- Stable hit ids, built once at load instead of concatenating on every frame.
+local HEAD_HITS = { name = "##fwhname", role = "##fwhrole", level = "##fwhlevel", dist = "##fwhdist" }
+
 local state = {
   types = { npc = true, pc = false, corpse = false },
   search = "", sort = "name", desc = false, -- A to Z at first
@@ -30,6 +33,11 @@ local function fetch(qol)
   state.fetchedAt, state.dirty = ui.GetTime(), false
   if type(result) ~= "table" then return end
   state.rows, state.total, state.hasRole = result.rows or {}, result.total or 0, result.has_role == true
+  -- rows are fresh tables; build each hit id once here instead of every frame the row is visible.
+  -- An empty fallback keeps a malformed, id-less row from erroring.
+  for _, row in ipairs(state.rows) do
+    row.hit = row.id ~= nil and ("##fwr" .. row.id) or ""
+  end
   -- the sorted column went away with the last role: back to the default order
   if state.sort == "role" and not state.hasRole then
     state.sort, state.desc, state.dirty, state.scrollTop = "name", false, true, true
@@ -70,7 +78,7 @@ local function head(key, label, x, y0, y1, colW, align, s)
   local font = T.font.tiny
   local active = state.sort == key
   local x0 = align == "right" and x - colW or x
-  if T.Hit("##fwh" .. key, x0, y0, x0 + colW, y1) then sortBy(key) end
+  if T.Hit(HEAD_HITS[key], x0, y0, x0 + colW, y1) then sortBy(key) end
   local hovered = ui.IsItemHovered()
   local color = active and C.accent or (hovered and C.text or C.faint)
   local tw, th = T.TextSize(label, font)
@@ -168,7 +176,7 @@ local function body(cx, cy, w, h, s, qol)
     local row = rows[i]
     local ry = oy + (i - 1) * rowH
     local selected = row.id == state.selected
-    if T.Hit("##fwr" .. row.id, ox, ry, right, ry + rowH) then
+    if T.Hit(row.hit, ox, ry, right, ry + rowH) then
       state.selected, state.selectedName, state.error = row.id, row.name, nil
     end
     local hovered = ui.IsItemHovered()
@@ -203,11 +211,12 @@ local function body(cx, cy, w, h, s, qol)
   local sy = py1 + GAP * s
   local _, stH = T.TextSize("Ag", T.font.tiny)
   local ty = sy + (STATUS_H * s - stH) / 2
-  T.Text(cx, ty, string.format("%d of %d spawns", n, state.total), C.faint, T.font.tiny)
+  local countText = string.format("%d of %d spawns", n, state.total)
+  T.Text(cx, ty, countText, C.faint, T.font.tiny)
   local right_text, right_color = "Nothing selected", C.faint
   if state.error then right_text, right_color = state.error, C.bad
   elseif state.selected then right_text = "Selected: " .. (state.selectedName or "") end
-  local countW = T.TextSize(string.format("%d of %d spawns", n, state.total), T.font.tiny)
+  local countW = T.TextSize(countText, T.font.tiny)
   T.Text(cx + w, ty, T.Fit(right_text, w - countW - 12 * s, T.font.tiny), right_color, T.font.tiny, "right")
 
   -- Travel to

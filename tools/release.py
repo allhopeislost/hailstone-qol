@@ -3,6 +3,7 @@
 
     python3 tools/release.py 0.2.7 --change "What changed" [--change ...]
     python3 tools/release.py 0.2.7 --maintenance --change "Moved files into core/"
+    python3 tools/release.py 0.2.7 --prerelease --change "..." # publish as a GitHub pre-release
     python3 tools/release.py 0.2.7 --change "..." --dry-run     # everything up to signing; nothing is changed
 
 Only run it when asked. The signing key lives outside the repo: --key, $HAILSTONE_QOL_KEY or
@@ -73,6 +74,7 @@ def main() -> int:
     parser.add_argument("version")
     parser.add_argument("--change", action="append", default=[], help="a release-note bullet (repeatable)")
     parser.add_argument("--maintenance", action="store_true", help='headed "Maintenance release"')
+    parser.add_argument("--prerelease", action="store_true", help="publish the GitHub release as a pre-release")
     parser.add_argument("--message", help="commit message (default: Release QoL <version>)")
     parser.add_argument("--dry-run", action="store_true", help="build, sign and verify in a temp folder, then stop")
     parser.add_argument("--key", help="secret signing key file")
@@ -131,8 +133,11 @@ def main() -> int:
             print("== publish")
             notes_file = out / "notes.md"
             notes_file.write_text(notes, encoding="utf-8")
-            run(["gh", "release", "create", tag, str(zipfile), str(manifest), "--repo", REPO,
-                 "--title", f"QoL {version}", "--notes-file", str(notes_file)])
+            publish = ["gh", "release", "create", tag, str(zipfile), str(manifest), "--repo", REPO,
+                       "--title", f"QoL {version}", "--notes-file", str(notes_file)]
+            if args.prerelease:
+                publish.append("--prerelease")
+            run(publish)
 
             url = f"https://github.com/{REPO}/releases/download/{tag}/hailstone-addon.txt"
             with urllib.request.urlopen(url) as response:

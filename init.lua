@@ -151,16 +151,33 @@ local namedStore = named.newStore(mq, nil, reportSaveError)
 local namedState = {open = false, edit = false, zone = nil, serial = 0}
 
 -- The short name of the zone the player is in, lowercase to match the data's keys, or nil
--- when the client does not tell (not in a zone, or no zone_name in this client).
+-- when the client does not tell (not in a zone, or no zone_name in this client). The named
+-- window reads this every frame, so the name is cached by zone_id; leaving a zone or having
+-- no usable player record uses a distinct key, so a cached zone is never returned there.
+local zoneShortCache = {valid = false, key = nil, value = nil}
+local zoneNoZone = {} -- key for "no usable zone_id": outside a zone, bad record, missing API
+
 local function currentZoneShort()
-  if type(hs.player) ~= 'function' then return nil end
-  local ok, player = pcall(hs.player)
-  if not ok or type(player) ~= 'table' or player.in_zone == false then return nil end
-  if not positiveInteger(player.zone_id) then return nil end
-  local read, name = pcall(hs.zone_name, player.zone_id)
-  if not read or type(name) ~= 'string' then return nil end
-  local short = name:match('^%s*(.-)%s*$'):lower()
-  if short == '' then return nil end
+  local key = zoneNoZone
+  if type(hs.player) == 'function' then
+    local ok, player = pcall(hs.player)
+    if ok and type(player) == 'table' and player.in_zone ~= false then
+      local zone = player.zone_id
+      if positiveInteger(zone) then key = zone end
+    end
+  end
+  if zoneShortCache.valid and zoneShortCache.key == key then
+    return zoneShortCache.value
+  end
+  local short
+  if key ~= zoneNoZone then
+    local read, name = pcall(hs.zone_name, key)
+    if read and type(name) == 'string' then
+      short = name:match('^%s*(.-)%s*$'):lower()
+      if short == '' then short = nil end
+    end
+  end
+  zoneShortCache.valid, zoneShortCache.key, zoneShortCache.value = true, key, short
   return short
 end
 
@@ -450,15 +467,17 @@ local function isServiceNpc(spawn)
 end
 
 -- The nameplate/target suffix: "[12]", "[WAR]" or "[12 WAR]", and "" when neither shows.
+-- Built from two locals instead of a per-call parts table: the nameplate hook runs per spawn.
 local function detail(spawn, level, class)
-  local parts = {}
+  local levelText
   if level and type(spawn.level) == 'number' and spawn.level > 0 and not isServiceNpc(spawn) then
-    parts[#parts + 1] = tostring(spawn.level)
+    levelText = tostring(spawn.level)
   end
   local name = class and className(spawn)
-  if name then parts[#parts + 1] = name end
-  if #parts == 0 then return '' end
-  return ' [' .. table.concat(parts, ' ') .. ']'
+  if not levelText and not name then return '' end
+  if not name then return ' [' .. levelText .. ']' end
+  if not levelText then return ' [' .. name .. ']' end
+  return ' [' .. levelText .. ' ' .. name .. ']'
 end
 
 hs.ui_function('item_info', function(item)
@@ -466,13 +485,30 @@ hs.ui_function('item_info', function(item)
   return info.item(item)
 end)
 
+-- The target window asks every frame. Cache the suffix by the resolved target id and the two
+-- switches; the id is still read each call so a target switch is seen right away, and the
+-- switches are part of the key so flipping an option recomputes on the next frame.
+local targetNameCache = {valid = false, id = nil, level = nil, class = nil, suffix = nil}
+local targetNoId = {} -- key for a missing target id (nil/false)
+
 hs.ui_function('target_name', function(name)
   local showLevel, showClass = settings.get('target_level'), settings.get('npc_class')
   if (not showLevel and not showClass) or type(name) ~= 'string' then return name end
   local id = mq.TLO.Target.ID()
+  local key = id or targetNoId
+  if targetNameCache.valid and targetNameCache.id == key
+      and targetNameCache.level == showLevel and targetNameCache.class == showClass then
+    return name .. targetNameCache.suffix
+  end
   local spawn = id and hs.spawn(id)
-  if not spawn or not spawn.npc or spawn.corpse then return name end
-  return name .. detail(spawn, showLevel, showClass)
+  local suffix = ''
+  if spawn and spawn.npc and not spawn.corpse then
+    suffix = detail(spawn, showLevel, showClass)
+  end
+  targetNameCache.valid, targetNameCache.id = true, key
+  targetNameCache.level, targetNameCache.class = showLevel, showClass
+  targetNameCache.suffix = suffix
+  return name .. suffix
 end)
 
 -- Supported custom clients supply nameplate text and map spawn data to these hooks.

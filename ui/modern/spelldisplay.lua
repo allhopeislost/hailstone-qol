@@ -15,6 +15,24 @@ local ICON_OPTS = { radius = 6 }
 -- MQ2ItemDisplay's default spell information colour.
 local EXTRA_COLOR = { 0, 1, 1, 1 }
 local descriptions = {}
+-- Spell data never changes for an id, so all preparation (spell_view, metadata parsing, effect
+-- sorting) is done once per id and shared by every window/frame showing that spell.
+local spellCache = {}
+-- Sort order for the known effect names; unknown effects and raw lines sort after these.
+local PRIORITY = { Haste = 1, Strength = 2, ['Armor Class'] = 3, Attack = 4, Accuracy = 5, Strikethrough = 6 }
+-- Constant metadata label groups (kept at module scope instead of rebuilt every frame).
+local META_TECHNICAL = { 'Spell ID' }
+local META_TIMING = { 'Cast', 'Recovery', 'Recast' }
+local META_RANGE = { 'Range', 'AE range', 'Pushback' }
+local META_COMMON = { 'Level', 'Endurance', 'Resist type', 'Modifier', 'Skill' }
+local META_SUMMARY = { 'Duration', 'Mana', 'Classes' }
+local META_REMAINING = { 'Mana', 'Classes' }
+
+local function shallowCopy(t)
+  local out = {}
+  for k, v in pairs(t) do out[k] = v end
+  return out
+end
 
 local function colored(text, color)
   ui.PushTextWrapPos(0)
@@ -22,21 +40,36 @@ local function colored(text, color)
   ui.PopTextWrapPos()
 end
 
--- Compact columns, measured from the font instead of relying on monospaced text.
-local function effects(rows, width, s)
+-- Prepare the effect rows once per spell: copy them (never mutate plugin-owned tables), keep a
+-- stable original order for ties, and sort known effects first / raw lines last.
+local function prepareEffects(rows)
   if type(rows) ~= 'table' or #rows == 0 then return end
-  ui.Dummy(0, 8 * s)
-  colored('Effects', C.muted)
   local ordered = {}
-  for _, row in ipairs(rows) do ordered[#ordered + 1] = row end
-  local priority = { Haste = 1, Strength = 2, ['Armor Class'] = 3, Attack = 4, Accuracy = 5, Strikethrough = 6 }
-  -- Keep unknown effects in their original relative order.
-  for i, row in ipairs(ordered) do row._order = i end
+  for _, row in ipairs(rows) do
+    local copy = {}
+    for k, v in pairs(row) do copy[k] = v end
+    ordered[#ordered + 1] = copy
+  end
+  -- Keep unknown effects in their original relative order; cache the value strings too.
+  for i, row in ipairs(ordered) do
+    row._order = i
+    row._minText = (row.min or '') .. (row.min_level and (' (L' .. row.min_level .. ')') or '')
+    row._maxText = (row.max or '') .. (row.max_level and (' (L' .. row.max_level .. ')') or '')
+  end
   table.sort(ordered, function(a, b)
     -- unknown names after the known ones, raw lines last
-    local aa, bb = a.is_raw and 100 or priority[a.name] or 99, b.is_raw and 100 or priority[b.name] or 99
+    local aa, bb = a.is_raw and 100 or PRIORITY[a.name] or 99, b.is_raw and 100 or PRIORITY[b.name] or 99
     return aa == bb and a._order < b._order or aa < bb
   end)
+  return ordered
+end
+
+-- Compact columns, measured from the font instead of relying on monospaced text. All drawing and
+-- width-dependent measurement stays here and runs every frame (the window is resizable).
+local function drawEffects(ordered, width, s)
+  if not ordered then return end
+  ui.Dummy(0, 8 * s)
+  colored('Effects', C.muted)
   local panelX, panelY = ui.GetCursorScreenPos()
   ui.Dummy(0, 5 * s)
   local nameW = 0
@@ -51,9 +84,6 @@ local function effects(rows, width, s)
   local compact = width < nameW + minW * 2 + arrowW
   local hasMax = false
   for _, row in ipairs(ordered) do if row.max and not row.is_raw then hasMax = true end end
-  local function value(text, level)
-    return (text or '') .. (level and (' (L' .. level .. ')') or '')
-  end
   if not compact and hasMax then
     local x, y = ui.GetCursorScreenPos()
     local _, th = T.TextSize('Ag', T.font.small)
@@ -68,19 +98,19 @@ local function effects(rows, width, s)
       local x, y = ui.GetCursorScreenPos()
       local _, th = T.TextSize('Ag', T.font.small)
       T.Text(x, y, row.name or '', EXTRA_COLOR, T.font.small)
-      T.Text(x + nameW, y, value(row.min, row.min_level), EXTRA_COLOR, T.font.small)
+      T.Text(x + nameW, y, row._minText, EXTRA_COLOR, T.font.small)
       if row.max and not compact then
         -- The default game font lacks the Unicode arrow glyph.
         local ax, ay = x + nameW + minW, y + th * 0.5
         ui.DrawLine(ax, ay, ax + 8 * s, ay, C.muted[1], C.muted[2], C.muted[3], 1, 1)
         ui.DrawLine(ax + 5 * s, ay - 3 * s, ax + 8 * s, ay, C.muted[1], C.muted[2], C.muted[3], 1, 1)
         ui.DrawLine(ax + 5 * s, ay + 3 * s, ax + 8 * s, ay, C.muted[1], C.muted[2], C.muted[3], 1, 1)
-        T.Text(x + nameW + minW + arrowW, y, value(row.max, row.max_level), EXTRA_COLOR, T.font.small)
+        T.Text(x + nameW + minW + arrowW, y, row._maxText, EXTRA_COLOR, T.font.small)
       end
       ui.Dummy(width, th + 3 * s)
       if row.max and compact then
         local nx, ny = ui.GetCursorScreenPos()
-        T.Text(nx + nameW, ny, '- ' .. value(row.max, row.max_level), EXTRA_COLOR, T.font.small)
+        T.Text(nx + nameW, ny, '- ' .. row._maxText, EXTRA_COLOR, T.font.small)
         ui.Dummy(width, th + 3 * s)
       end
       if row.skill or row.scale or row.note then
@@ -129,13 +159,13 @@ end
 
 local function drawMetadata(fields, other, technical)
   if technical then
-    metadataLine(fields, {'Spell ID'}, C.muted)
+    metadataLine(fields, META_TECHNICAL, C.muted)
     return
   end
-  metadataLine(fields, {'Cast', 'Recovery', 'Recast'}, EXTRA_COLOR)
+  metadataLine(fields, META_TIMING, EXTRA_COLOR)
   if fields['AE range'] == '0' or fields['AE range'] == '0.0' then fields['AE range'] = nil end
-  metadataLine(fields, {'Range', 'AE range', 'Pushback'}, EXTRA_COLOR)
-  for _, label in ipairs({'Level', 'Endurance', 'Resist type', 'Modifier', 'Skill'}) do
+  metadataLine(fields, META_RANGE, EXTRA_COLOR)
+  for _, label in ipairs(META_COMMON) do
     metadataLine(fields, {label}, EXTRA_COLOR)
   end
   local remaining = {}
@@ -147,6 +177,23 @@ local function drawMetadata(fields, other, technical)
   table.sort(remaining)
   for _, label in ipairs(remaining) do metadataLine(fields, {label}, EXTRA_COLOR) end
   for _, line in ipairs(other) do colored(line, EXTRA_COLOR) end
+end
+
+-- Build the immutable preparation for one spell id. Failures (no plugin / no spell_view result)
+-- are not cached, so they keep the old per-frame no-details fallback behaviour.
+local function prepareSpell(id, plugin)
+  local details = plugin and plugin.spell_view(id)
+  if not details then return nil end
+  local pristine, other = metadata(details.metadata)
+  local known = {}
+  for label in pairs(pristine) do known[label] = true end
+  return {
+    details = details,
+    ordered = prepareEffects(details.effects),
+    fields = pristine,
+    other = other,
+    known = known,
+  }
 end
 
 -- testing (test.open.SpellDisplayWindow=1): the first gem's spell, else Complete Heal
@@ -183,19 +230,25 @@ for i = 1, INSTANCES do
     ui.PushFont(T.font.small)
     local plugin = eq.Plugin("script:qol")
     local id = eq.DisplaySpellId and eq.DisplaySpellId(i)
-    local details = plugin and id and plugin.spell_view(id)
+    local entry = id and spellCache[id]
+    if id and not entry then
+      entry = prepareSpell(id, plugin)
+      if entry then spellCache[id] = entry end
+    end
+    local details = entry and entry.details
     ui.BeginChild("##qolspell", 0, math.max(1, y + h - ly - 6 * s), false)
     local width = ui.GetContentRegionAvail()
     local raw = W.Text(window, "SDW_SpellDescription") or ""
-    local fields, other = metadata(details and details.metadata)
+    -- metadataLine / drawMetadata delete and mutate fields, so consume a fresh copy each frame.
+    local fields = entry and shallowCopy(entry.fields) or {}
+    local other = entry and entry.other or {}
     local desc = descriptions[window]
     if not desc or desc.raw ~= raw then
       desc = { raw = raw, lines = stml.Lines(raw, C.text) }
       descriptions[window] = desc
     end
     -- labels this window already shows from the addon's own data: the game's copy of them is dropped
-    local known = {}
-    for label in pairs(fields) do known[label] = true end
+    local known = entry and entry.known or {}
     local summaryShown = false
     for _, line in ipairs(desc.lines) do
       local plain = ''
@@ -208,24 +261,24 @@ for i = 1, INSTANCES do
         if dur and dur ~= '' then fields.Duration = dur end
         if not fields.Mana then fields.Mana = plain:match('Mana:%s*(%S+)') end
         if not fields.Classes then fields.Classes = plain:match('Classes:%s*(.-)%s*$') end
-        metadataLine(fields, {'Duration', 'Mana', 'Classes'}, C.text)
+        metadataLine(fields, META_SUMMARY, C.text)
         summaryShown = true
       elseif label and known[label] then
         if not summaryShown then
-          metadataLine(fields, {'Mana', 'Classes'}, C.text)
+          metadataLine(fields, META_REMAINING, C.text)
           summaryShown = true
         end
       else
         if not summaryShown then
-          metadataLine(fields, {'Mana', 'Classes'}, C.text)
+          metadataLine(fields, META_REMAINING, C.text)
           summaryShown = true
         end
         stml.DrawLine(line, width, function(link) eq.StmlLink(window, "SDW_SpellDescription", link[1], link[2]) end)
       end
     end
-    if not summaryShown then metadataLine(fields, {'Mana', 'Classes'}, C.text) end
-    if details then
-      effects(details.effects, width, s)
+    if not summaryShown then metadataLine(fields, META_REMAINING, C.text) end
+    if entry then
+      drawEffects(entry.ordered, width, s)
       ui.Dummy(0, 6 * s)
       drawMetadata(fields, other, false)
       ui.Dummy(0, 6 * s)

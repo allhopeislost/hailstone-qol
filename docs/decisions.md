@@ -379,3 +379,18 @@ Recorded: 2026-11-12
 Decision: watch incoming death packets for the current mob and trigger the next selection on the next UI frame,
 after the client has processed the death. Check target confirmation each frame; retain the regular tick as fallback.
 Why: shorten the delay between kills without changing targets during the client's death-packet processing.
+
+## D040 Cache frame-loop work instead of rebuilding it
+Status: Accepted
+Recorded: 2026-11-16
+Decision: data that is immutable for a given identity is prepared once and reused per frame: spell-window
+details and effect order by spell id, item information and socket ids by item id, the target suffix by target
+id plus both switches, the zone short name by zone_id, and the named zone lists by data reference. A named
+refresh builds one keyed spawn index instead of scanning spawns per row. Two expensive reads are throttled:
+buff slots at most every 0.15 s and item-display children every 0.5 s. Drawing and width-dependent layout
+stay per frame; there are no performance switches.
+Why: the same data was rebuilt tens of times a second without any visible benefit. The only accepted
+behavior change is that a buff appearing or disappearing can be shown up to 0.15 s later; a target switch
+forces an immediate buff scan.
+Rules out: caching mutable fields, width-dependent layout or map-target positions; adding options for
+internal caches.

@@ -63,11 +63,27 @@ end
 
 local nameKey = M.nameKey
 
--- Every zone in the data, the current one first, then A to Z by short name.
+-- Immutable-data caches, keyed first by the data table reference (so different mock data
+-- tables never share entries), then by the normalized query. Weak keys let a data table be
+-- collected once nothing else holds it, instead of leaking it through the cache.
+local zoneListCache = setmetatable({}, { __mode = 'k' })
+
+-- Every zone in the data, the current one first, then A to Z by short name. Only `data` and
+-- the normalized `currentShort` affect the result, so the list is cached on both.
 function M.zoneList(data, currentShort)
   local list = {}
   if type(data) ~= 'table' or type(data.zones) ~= 'table' then return list end
   local current = M.keyOf(currentShort or '')
+  local slot = current -- false is a valid, distinct cache key for the nil (no current zone) case
+  if slot == nil then slot = false end
+  local byCurrent = zoneListCache[data]
+  if not byCurrent then
+    byCurrent = {}
+    zoneListCache[data] = byCurrent
+  end
+  local cached = byCurrent[slot]
+  if cached ~= nil then return cached end
+
   for short, zone in pairs(data.zones) do
     if type(short) == 'string' and type(zone) == 'table' then
       local namedZoned = type(zone.named) == 'table' and zone.named or {}
@@ -83,6 +99,7 @@ function M.zoneList(data, currentShort)
     if a.current ~= b.current then return a.current end
     return a.short < b.short
   end)
+  byCurrent[slot] = list
   return list
 end
 
@@ -108,12 +125,30 @@ function M.lootOf(data, name)
   return out
 end
 
+local namedOfZoneCache = setmetatable({}, { __mode = 'k' })
+local NO_ZONE = {} -- sentinel: a cached "unknown zone" result still returns nil
+
 function M.namedOfZone(data, short)
   if type(data) ~= 'table' or type(data.zones) ~= 'table' then return nil end
-  local zone = data.zones[M.keyOf(short or '') or '']
-  if type(zone) ~= 'table' or type(zone.named) ~= 'table' then return nil end
+  local key = M.keyOf(short or '') or ''
+  local byZone = namedOfZoneCache[data]
+  if not byZone then
+    byZone = {}
+    namedOfZoneCache[data] = byZone
+  end
+  local cached = byZone[key]
+  if cached ~= nil then
+    if cached == NO_ZONE then return nil end
+    return cached
+  end
+
+  local zone = data.zones[key]
+  if type(zone) ~= 'table' or type(zone.named) ~= 'table' then
+    byZone[key] = NO_ZONE
+    return nil
+  end
   local items = type(data.items) == 'table' and data.items or {}
-  local list = {}
+  local list, sortKeys = {}, {}
   for _, entry in ipairs(zone.named) do
     if type(entry) == 'table' and type(entry.name) == 'string' and nameKey(entry.name) then
       local drops = {}
@@ -128,17 +163,22 @@ function M.namedOfZone(data, short)
           end
         end
       end
-      list[#list + 1] = {
+      local display = displayOf(entry.name)
+      local row = {
         name = entry.name,
-        display = displayOf(entry.name),
+        display = display,
         level = type(entry.level) == 'number' and entry.level or nil,
         drops = drops,
       }
+      list[#list + 1] = row
+      -- lowercase once at build time; the list stays byte-for-byte {name, display, level, drops}
+      sortKeys[row] = display:lower()
     end
   end
   table.sort(list, function(a, b)
-    return a.display:lower() < b.display:lower()
+    return sortKeys[a] < sortKeys[b]
   end)
+  byZone[key] = list
   return list
 end
 
@@ -190,36 +230,61 @@ end
 -- name; exact matches win over contained ones. Several matches: the nearest to `me`
 -- wins; without a position (me nil, no x/y/z) the first match by id. nil when nothing
 -- lives in `spawns` under that name.
-function M.matchSpawn(spawns, me, name)
-  if type(spawns) ~= 'table' or type(name) ~= 'string' then return nil end
+
+-- Precompute each living NPC's comparison keys once. A /named refresh matches every row
+-- against the same spawn set; doing gsub + keyOf per row per spawn was the hot path.
+local function buildSpawnIndex(spawns)
+  local index = {}
+  if type(spawns) ~= 'table' then return index end
+  for _, spawn in ipairs(spawns) do
+    if type(spawn) == 'table' and spawn.npc == true and spawn.corpse ~= true then
+      index[#index + 1] = {
+        spawn = spawn,
+        displayKey = M.keyOf(findwalk.displayName(spawn)),
+        rawKey = M.keyOf(type(spawn.name) == 'string' and spawn.name or ''),
+      }
+    end
+  end
+  return index
+end
+
+-- Match a name against a prebuilt index, preserving matchSpawn's D029 rules verbatim:
+-- exact (displayKey/rawKey equals target or its underscore-to-space form) beats substring;
+-- a substring needs at least 3 spaced characters and a plain find; among matches the
+-- nearest to `me` wins, with the first entry as the fallback when no position is usable.
+local function matchInIndex(index, me, name)
   local target = M.keyOf(name)
   if not target then return nil end
   local spaced = (target:gsub('_', ' '))
-  local function bestOf(matches, best, nearest)
-    for _, spawn in ipairs(matches) do
-      local exact = distance(me, spawn)
-      if best == nil or (exact ~= nil and (nearest == nil or exact < nearest)) then
-        best, nearest = spawn, exact
-      end
-    end
-    return best, nearest
-  end
   local exact, substring = {}, {}
-  for _, spawn in ipairs(spawns) do
-    if type(spawn) == 'table' and spawn.npc == true and spawn.corpse ~= true then
-      local displayKey = M.keyOf(findwalk.displayName(spawn))
-      local rawKey = M.keyOf(type(spawn.name) == 'string' and spawn.name or '')
-      if displayKey == target or displayKey == spaced or rawKey == target or rawKey == spaced then
-        exact[#exact + 1] = spawn
-      elseif #spaced >= 3 and ((displayKey and displayKey:find(spaced, 1, true))
-          or (rawKey and rawKey:find(spaced, 1, true))) then
-        substring[#substring + 1] = spawn
-      end
+  for _, entry in ipairs(index) do
+    local displayKey, rawKey = entry.displayKey, entry.rawKey
+    if displayKey == target or displayKey == spaced or rawKey == target or rawKey == spaced then
+      exact[#exact + 1] = entry
+    elseif #spaced >= 3 and ((displayKey and displayKey:find(spaced, 1, true))
+        or (rawKey and rawKey:find(spaced, 1, true))) then
+      substring[#substring + 1] = entry
     end
   end
-  local best, nearest = bestOf(exact)
+  local function bestOf(matches)
+    local best, nearest
+    for _, entry in ipairs(matches) do
+      local spawn = entry.spawn
+      local d = distance(me, spawn)
+      if best == nil or (d ~= nil and (nearest == nil or d < nearest)) then
+        best, nearest = spawn, d
+      end
+    end
+    return best
+  end
+  local best = bestOf(exact)
   if best == nil then best = bestOf(substring) end
   return best
+end
+
+function M.matchSpawn(spawns, me, name)
+  if type(spawns) ~= 'table' or type(name) ~= 'string' then return nil end
+  return matchInIndex(buildSpawnIndex(spawns), me, name)
 end
 
 -- The rows of the /named window for one zone: the named NPCs of the data plus the tracked
@@ -244,6 +309,7 @@ function M.rows(data, spawns, me, currentShort, zoneShort, tracked)
       spawned = false,
       id = nil,
       dist = nil,
+      sortKey = entry.display:lower(), -- hidden lowercase key for the final sort
     }
   end
 
@@ -254,15 +320,17 @@ function M.rows(data, spawns, me, currentShort, zoneShort, tracked)
         local key = nameKey(name)
         if key and not seen[key] then
           seen[key] = true
+          local display = displayOf(name)
           rows[#rows + 1] = {
             name = name,
-            display = displayOf(name),
+            display = display,
             level = nil,
             tracked = true,
             custom = true,
             spawned = false,
             id = nil,
             dist = nil,
+            sortKey = display:lower(),
           }
         end
       end
@@ -270,8 +338,10 @@ function M.rows(data, spawns, me, currentShort, zoneShort, tracked)
   end
 
   if M.keyOf(currentShort or '') == zoneKey then
+    -- One indexed spawn list for the whole refresh instead of a full rescan per row.
+    local index = buildSpawnIndex(spawns)
     for _, row in ipairs(rows) do
-      local spawn = M.matchSpawn(spawns, me, row.name)
+      local spawn = matchInIndex(index, me, row.name)
       if spawn then
         row.spawned = true
         row.id = spawn.id
@@ -282,7 +352,7 @@ function M.rows(data, spawns, me, currentShort, zoneShort, tracked)
   end
 
   table.sort(rows, function(a, b)
-    local al, bl = a.display:lower(), b.display:lower()
+    local al, bl = a.sortKey, b.sortKey
     if al ~= bl then return al < bl end
     if a.custom ~= b.custom then return b.custom end
     return a.name < b.name

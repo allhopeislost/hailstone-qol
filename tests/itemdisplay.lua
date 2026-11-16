@@ -3,6 +3,7 @@ local realDofile = dofile
 local windows, displays, windowText, windowShown, titles = {}, {}, {}, {}, {}
 local buttons, texts, wrapped, colored, headings, tooltips, clicks = {}, {}, {}, {}, {}, {}, {}
 local stmlLinks, drawLinks, stmlRaws, infoRecords, dataReads = {}, {}, {}, {}, {}
+local infoCalls, infoOverride = 0, nil
 local requested, requestCalls = {}, 0
 local now, width, invisibleClick, hovered, checkboxClick, tierClick = 10, 380, false, false, false, nil
 local pluginAvailable, requestImpl = true, nil
@@ -78,7 +79,9 @@ eq = {
     if not pluginAvailable then return nil end
     local plugin = {
       item_info = function(record)
-        infoRecords[#infoRecords + 1] = record
+        infoRecords[record.id] = record
+        infoCalls = infoCalls + 1
+        if infoOverride then return infoOverride(record) end
         return require('core.info').item(record)
       end,
       request_item_preview = requestImpl,
@@ -166,6 +169,7 @@ local function load()
   windows, displays, windowText, windowShown, titles = {}, {}, {}, {}, {}
   buttons, texts, wrapped, colored, headings, tooltips, clicks = {}, {}, {}, {}, {}, {}, {}
   stmlLinks, drawLinks, stmlRaws, infoRecords, dataReads = {}, {}, {}, {}, {}
+  infoCalls, infoOverride = 0, nil
   requested, requestCalls = {}, 0
   now, width, invisibleClick, hovered, checkboxClick, tierClick = 10, 380, false, false, false, nil
   pluginAvailable, versionsAvailable = true, true
@@ -179,7 +183,7 @@ end
 
 local function frame(name)
   buttons, texts, wrapped, colored, headings, tooltips, clicks = {}, {}, {}, {}, {}, {}, {}
-  stmlLinks, drawLinks, stmlRaws, infoRecords, dataReads = {}, {}, {}, {}, {}
+  stmlLinks, drawLinks, stmlRaws, dataReads = {}, {}, {}, {}
   windows[name or 'Item Display']()
 end
 
@@ -230,7 +234,7 @@ assert(indexOf(headings, 'Additional information') < indexOf(headings, 'Other ve
 assert(has(wrapped, 'Opens a separate item window.'))
 assert(not has(wrapped, 'Asked the client'), 'rendering makes no success claim')
 assert(not has(texts, 'Enchanted preview') and not has(wrapped, 'preview'))
-assert(infoRecords[1] == baseData and infoRecords[1].id == 51907)
+assert(infoRecords[51907] == baseData and infoRecords[51907].id == 51907)
 assert(has(colored, 'Original Base'))
 assert(has(headings, 'Stats') and has(texts, 'AC'))
 assert(has(tooltips, 'Click to link this item in chat'), 'the live icon tooltip stays')
@@ -246,7 +250,7 @@ assert(not has(wrapped, 'opened'), 'inspect_item has no acknowledgement, so no w
 assert(requestCalls == 1 and #requested == 1)
 
 -- The original window, its data and its live controls are unchanged by requesting a version.
-assert(displays[1] == baseData and infoRecords[1] == baseData and infoRecords[1].id == 51907)
+assert(displays[1] == baseData and infoRecords[51907] == baseData and infoRecords[51907].id == 51907)
 assert(has(colored, 'Original Base') and not has(colored, 'Enchanted'))
 assert(has(texts, 'AC') and has(texts, '10'))
 assertButtons({'Enchanted', 'Legendary'})
@@ -270,12 +274,12 @@ local enchantedData = displays[5]
 frame('Item Display 5')
 assertButtons({'Base', 'Legendary'})
 assert(not button('Enchanted'), 'an Enchanted window does not offer Enchanted')
-assert(infoRecords[1] == enchantedData and infoRecords[1].id == 1051907)
+assert(infoRecords[1051907] == enchantedData and infoRecords[1051907].id == 1051907)
 assert(has(colored, 'Enchanted Item'))
 assert(has(wrapped, 'Opens a separate item window.'))
 assert(requestCalls == 1, 'opening a separate window requests nothing by itself')
 frame()
-assert(displays[1] == baseData and infoRecords[1] == baseData)
+assert(displays[1] == baseData and infoRecords[51907] == baseData)
 assert(has(colored, 'Original Base'), 'the first window keeps its own live content')
 assertButtons({'Enchanted', 'Legendary'})
 assert(requestCalls == 1, 'the windows do not share or replay requests')
@@ -350,7 +354,7 @@ local function failedClick(setup, fragment)
   tierClick = 'Legendary'
   frame()
   assert(has(wrapped, fragment), 'expected a status containing: ' .. fragment)
-  assert(infoRecords[1].id == 51907 and has(colored, 'Original Base'))
+  assert(infoRecords[51907].id == 51907 and has(colored, 'Original Base'))
   assert(has(texts, '7'), 'the original stats stay live')
   assertButtons({'Enchanted', 'Legendary'})
   assert(requestCalls == 0 or requested[1] == 2051907)
@@ -388,5 +392,38 @@ width = 380
 item(1, 51907, 'Original Base', 'Live base description')
 frame()
 assert(button('Legendary').y0 == button('Enchanted').y0)
+
+-- The English info string is cached per item id: one plugin call, but the text still renders every
+-- frame and follows a changed id. The description link callback is reused, not rebuilt each frame.
+load()
+item(1, 51907, 'Cached Base', 'desc')
+frame()
+assert(infoCalls == 1, 'item_info is called on the first frame for an id')
+assert(infoRecords[51907] == displays[1])
+assert(has(headings, 'Additional information') and has(wrapped, 'Item ID: 51907'))
+local firstLink = drawLinks[#drawLinks]
+frame()
+frame()
+assert(infoCalls == 1, 'item_info is not rebuilt every frame for an unchanged id')
+assert(has(headings, 'Additional information') and has(wrapped, 'Item ID: 51907'))
+assert(drawLinks[#drawLinks] == firstLink, 'the description link callback is reused, not rebuilt')
+item(1, 51908, 'Cached Other', 'desc')
+frame()
+assert(infoCalls == 2, 'a changed id fetches fresh item_info')
+assert(infoRecords[51908] == displays[1])
+assert(has(wrapped, 'Item ID: 51908') and not has(wrapped, 'Item ID: 51907'),
+  'the extra text follows the new id')
+
+-- A nil result is cached explicitly: an unchanged id with no text is not re-fetched and shows no heading.
+load()
+infoOverride = function() return nil end
+item(1, 51907, 'No Extra', 'desc')
+frame()
+assert(infoCalls == 1, 'item_info is called once for a nil result')
+assert(not has(headings, 'Additional information'), 'no heading when the plugin has no text')
+frame()
+frame()
+assert(infoCalls == 1, 'a cached nil is not re-fetched every frame')
+assert(not has(headings, 'Additional information'))
 
 print('item display custom client contract: ok')
