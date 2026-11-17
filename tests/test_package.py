@@ -1,5 +1,6 @@
 import importlib.util
 from pathlib import Path
+import re
 import tempfile
 import unittest
 
@@ -61,6 +62,23 @@ class PackageStagingTests(unittest.TestCase):
 
             with self.assertRaisesRegex(FileNotFoundError, "must not use symlinks"):
                 package.stage_runtime(root, temp / "stage")
+
+
+class RuntimeDofileTests(unittest.TestCase):
+    def test_files_loaded_with_dofile_are_packaged(self):
+        # A runtime file loaded by another one must ship too, or the feature silently
+        # disappears in game (0.3.9 shipped without ui/modern/spellinfo.lua).
+        # dofile resolves next to the calling file, then at the add-on root; names that
+        # exist in neither are client libraries (lib/hud.lua, map.lua, ...) and are skipped.
+        root = PACKAGE_TOOL.parents[1]
+        missing = []
+        for relative in package.RUNTIME_FILES:
+            source = root / relative
+            for name in re.findall(r"""dofile\(\s*['"]([^'"]+)['"]""", source.read_text(encoding="utf-8")):
+                target = next((path for path in (source.parent / name, root / name) if path.is_file()), None)
+                if target is not None and target.relative_to(root).as_posix() not in package.RUNTIME_FILES:
+                    missing.append(f"{relative} loads {target.relative_to(root).as_posix()}")
+        self.assertEqual([], missing)
 
 
 class PackageOutputTests(unittest.TestCase):

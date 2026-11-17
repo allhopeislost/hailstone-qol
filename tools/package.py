@@ -13,7 +13,7 @@ import tempfile
 
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = "0.3.9"
+VERSION = "0.3.10"
 
 # The manifest's capability ceiling. `commands` lets the dialogs' close box
 # (and Esc/menu Close) hide the game window; `actions` lets the displays'
@@ -40,6 +40,7 @@ RUNTIME_FILES = (
     "ui/modern/maptargetline.lua",
     "ui/modern/minimaptargetline.lua",
     "ui/modern/spelldisplay.lua",
+    "ui/modern/spellinfo.lua",
     "ui/modern/target.lua",
     "ui/modern/findwalk.lua",
     "ui/modern/named.lua",
