@@ -69,6 +69,10 @@ Read: `id`, `name`, `req_level`, `stack`, `charges`, `bag_slots`, `weight`, `ac`
 `scroll_spell`, `value`, `favor`, `damage`, `delay`, `lore`, `magic`. Custom; **unverified field by field**
 (the item window works ingame).
 
+Also read, by the `item_spell_info(item)` plugin function: `focus_spell`, `proc_spell`, `worn_spell` (spell ids,
+next to `click_spell` and `scroll_spell`). Custom, being added to the custom client; **unverified field by field**.
+Missing or non-positive values mean "no such spell".
+
 ## Spawn fields
 
 From `hs.spawn(id)` (source): `id`, `name`, `level`, `class`, `race`, `owner`, `guild`, `npc`, `corpse`, `x`, `y`,

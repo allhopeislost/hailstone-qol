@@ -45,7 +45,7 @@ eq = {
     return {spell_view = function(id)
       spellViewCalls = spellViewCalls + 1
       assert(id == currentId)
-      if enabled then return {metadata = 'Spell ID: ' .. id .. '\nMana: 40\nClasses: BST 11\nCast: 6.50s\nRecovery: 1.50s\nRecast: 1.50s',
+      if enabled then return {metadata = 'Spell ID: ' .. id .. '\nMana: 40\nClasses: BST 11\nDamage per mana: 1.17\nCast: 6.50s\nRecovery: 1.50s\nRecast: 1.50s',
         effects = {{name = 'Accuracy', min = '+10%', min_level = 11, skill = '1H Blunt', scale = '+1% per 2 levels'},
           {name = 'Strength', min = '+20', min_level = 11, max = '+45', max_level = 60},
           {name = 'Stun', min = '4s', note = 'PC 2s, up to level 55'}}} end
@@ -56,6 +56,7 @@ dofile = function(path)
   if path == 'lib/hud.lua' then return hud end
   if path == 'lib/widgets.lua' then return W end
   if path == 'lib/stml.lua' then return stml end
+  if path == 'spellinfo.lua' then return realDofile('ui/modern/spellinfo.lua') end
   if path == 'lib/progress.lua' then return {TestOpen = function() end} end
   return realDofile(path)
 end
@@ -76,6 +77,10 @@ assert(table.concat(drawn, '|'):find('PC 2s, up to level 55', 1, true))
 assert(table.concat(drawn, '|'):find('+1% per 2 levels', 1, true))
 assert(table.concat(inline, '|'):find('Duration: 1h    Mana: 40    Classes: BST 11', 1, true))
 assert(table.concat(inline, '|'):find('Cast: 6.50s    Recovery: 1.50s    Recast: 1.50s', 1, true))
+-- Damage per mana is its own line, directly under the summary line.
+local ownLine = false
+for _, entry in ipairs(inline) do if entry == 'Damage per mana: 1.17' then ownLine = true end end
+assert(ownLine, 'damage per mana is drawn as its own line')
 assert(not table.concat(drawn, '|'):find('→', 1, true))
 assert(rects == 6 and lines >= 24) -- each panel and each geometric arrow
 local function unchanged()

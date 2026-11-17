@@ -3,6 +3,14 @@ local spawn, nameplate
 local spellReads = 0
 local failSave = false
 local saved, warning
+-- Spells read by item_spell_info; false is "no record" (hs.spell returned nothing usable).
+local itemSpells = {
+  [40] = {id = 40, name = 'Focus Example', class_level = {255, 20},
+    effects = {{effect = 2, base = 5, base2 = 0, max = 0, formula = 100}}},
+  [41] = {id = 41, name = 'Proc Example'},
+  [42] = {id = 42, name = 'Click Example'},
+  [43] = false,
+}
 local spellData = {id = 7, name = 'Example', spell_icon = 90, class_level = {255, 12}, cast_time = 1000,
   recovery_time = 500, recast_time = 5000, mana = 80, gem_icon = 12, range = 200, ae_range = 35,
   push_back = 1.5, spell_type = 0, resist = 2, resist_adj = -25,
@@ -17,6 +25,7 @@ package.preload.hailstone = function()
     chat = function(text, color) warning = {text, color} end,
     spawn = function() return spawn end,
     spell = function(id)
+      if itemSpells[id] ~= nil then return itemSpells[id] end
       spellReads = spellReads + 1
       assert(id == 7)
       return spellData
@@ -109,6 +118,26 @@ options.item_info.set(1)
 assert(functions.item_info(item):find('HP: 12', 1, true))
 assert(functions.item_info(nil) == nil)
 assert(saved.target_level and saved.item_info)
+
+-- item_spell_info: the item's spell in spell_view's shape plus id, name and kind.
+assert(functions.item_spell_info)
+local itemView = functions.item_spell_info({id = 5, focus_spell = 40, proc_spell = 41, click_spell = 42})
+assert(itemView.id == 40 and itemView.name == 'Focus Example' and itemView.kind == 'Focus')
+assert(type(itemView.effects) == 'table' and #itemView.effects == 1 and itemView.effects[1].name == 'Attack')
+assert(type(itemView.metadata) == 'string')
+assert(itemView.metadata == 'Spell ID: 40\nClasses: CLR 20', itemView.metadata)
+itemView = functions.item_spell_info({focus_spell = 0, proc_spell = 41, click_spell = 42})
+assert(itemView.id == 41 and itemView.kind == 'Proc' and #itemView.effects == 0)
+assert(itemView.metadata == 'Spell ID: 41')
+itemView = functions.item_spell_info({click_spell = 42, scroll_spell = 41})
+assert(itemView.id == 42 and itemView.kind == 'Click')
+assert(functions.item_spell_info({scroll_spell = 41}).kind == 'Scroll')
+assert(functions.item_spell_info({id = 5, click_spell = 0}) == nil, 'no spell id')
+assert(functions.item_spell_info(item) == nil and functions.item_spell_info(nil) == nil)
+assert(functions.item_spell_info({worn_spell = 43}) == nil, 'no spell record')
+options.item_info.set(0)
+assert(functions.item_spell_info({focus_spell = 40}) == nil, 'option off')
+options.item_info.set(1)
 
 -- The experimental tier preview is opt-in: off by default, refused while
 -- off, available once enabled.

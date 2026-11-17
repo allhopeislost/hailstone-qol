@@ -13,7 +13,7 @@ import tempfile
 
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = "0.3.8"
+VERSION = "0.3.9"
 
 # The manifest's capability ceiling. `commands` lets the dialogs' close box
 # (and Esc/menu Close) hide the game window; `actions` lets the displays'
@@ -78,7 +78,9 @@ def resolve_output(path: Path, source: Path = ROOT) -> Path:
 def find_make_addon(explicit: str | None) -> Path:
     """Use an explicit path, env override, or the conventional sibling client checkout."""
     candidates = [explicit, os.environ.get("HAILSTONE_MAKE_ADDON")]
-    candidates.append(str(ROOT.parents[1] / "Hailstone-dev" / "tools" / "make_addon.py"))
+    client = ROOT.parents[1] / "Hailstone-dev"
+    candidates.append(str(client / "code" / "tools" / "make_addon.py"))
+    candidates.append(str(client / "tools" / "make_addon.py"))
     for candidate in candidates:
         if candidate:
             path = Path(candidate).expanduser()

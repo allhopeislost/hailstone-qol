@@ -8,7 +8,7 @@
 
 Only run it when asked. The signing key lives outside the repo: --key, $HAILSTONE_QOL_KEY or
 ~/.local/share/hailstone-qol/hailstone-qol-sign.key. hailstone_sign comes from --sign-tool, $HAILSTONE_SIGN or the
-sibling Hailstone-dev/build.
+sibling Hailstone-dev/code/build (or Hailstone-dev/build).
 """
 
 from __future__ import annotations
@@ -62,8 +62,9 @@ def run(command: list[str], **kwargs) -> subprocess.CompletedProcess:
     return subprocess.run(command, check=True, text=True, cwd=ROOT, **kwargs)
 
 
-def find_tool(explicit: str | None, env: str, fallback: Path, what: str) -> Path:
-    for candidate in (explicit, os.environ.get(env), str(fallback)):
+def find_tool(explicit: str | None, env: str, fallback: Path | tuple[Path, ...], what: str) -> Path:
+    fallbacks = fallback if isinstance(fallback, tuple) else (fallback,)
+    for candidate in (explicit, os.environ.get(env), *(str(path) for path in fallbacks)):
         if candidate and Path(candidate).expanduser().is_file():
             return Path(candidate).expanduser().resolve()
     raise FileNotFoundError(f"{what} not found; pass it or set ${env}")
@@ -91,8 +92,10 @@ def main() -> int:
         notes = make_notes(args.change, args.maintenance)
         key = find_tool(args.key, "HAILSTONE_QOL_KEY",
                         Path.home() / ".local/share/hailstone-qol/hailstone-qol-sign.key", "signing key")
+        client = ROOT.parents[1] / "Hailstone-dev"
         sign = find_tool(args.sign_tool, "HAILSTONE_SIGN",
-                         ROOT.parents[1] / "Hailstone-dev" / "build" / "hailstone_sign", "hailstone_sign")
+                         (client / "code" / "build" / "hailstone_sign", client / "build" / "hailstone_sign"),
+                         "hailstone_sign")
 
         if not args.dry_run:
             if run(["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True).stdout.strip() != "main":

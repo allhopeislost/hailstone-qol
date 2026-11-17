@@ -48,16 +48,37 @@ hs.ui_function('spell_info', function(id)
 end)
 
 -- The display gets structured effect rows as well as the existing text API.
-hs.ui_function('spell_view', function(id)
-  if not settings.get('spell_info') then return nil end
-  if not finite(id) or id <= 0 then return nil end
-  local spell = hs.spell(id)
-  if type(spell) ~= 'table' then return nil end
+-- The spell window's shape for one spell record: {effects = rows, metadata = header text}.
+local function spellView(spell)
   local details = info.spell_details(spell, function(spellId)
     local other = hs.spell(spellId)
     return type(other) == 'table' and other.name or nil
   end)
   return {effects = details.effects, metadata = table.concat(details.metadata, '\n')}
+end
+
+hs.ui_function('spell_view', function(id)
+  if not settings.get('spell_info') then return nil end
+  if not finite(id) or id <= 0 then return nil end
+  local spell = hs.spell(id)
+  if type(spell) ~= 'table' then return nil end
+  return spellView(spell)
+end)
+
+-- The spell an item window's record carries (focus, proc, worn, click, then scroll), in the spell
+-- window's shape plus id, name and kind. Part of the item information switch; nil when the option
+-- is off, the record has no spell id, or hs.spell is missing or has no record for it.
+hs.ui_function('item_spell_info', function(item)
+  if not settings.get('item_info') then return nil end
+  local id, kind = info.item_spell(item)
+  if not id or type(hs.spell) ~= 'function' then return nil end
+  local read, spell = pcall(hs.spell, id)
+  if not read or type(spell) ~= 'table' then return nil end
+  local view = spellView(spell)
+  view.id = positiveInteger(spell.id) and spell.id or id
+  view.name = type(spell.name) == 'string' and spell.name or nil
+  view.kind = kind
+  return view
 end)
 
 -- Plain map coordinates only: no spawn scan, movement command or persistent target cache.

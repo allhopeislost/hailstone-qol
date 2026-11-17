@@ -10,6 +10,7 @@
 local hud = dofile("lib/hud.lua")
 local W = dofile("lib/widgets.lua")
 local stml = dofile("lib/stml.lua")
+local SI = dofile("spellinfo.lua")
 local T = hud.T
 local C = T.color
 local INSTANCES = 6
@@ -462,6 +463,60 @@ local function itemInfo(plugin, data)
   return cached
 end
 
+-- The item's spell (focus, proc, worn, click or scroll: the plugin picks it) in the spell window's layout. The
+-- plugin call is cached per item id like itemInfo (a nil result too), the prepared effects and metadata per spell
+-- id; the per-frame drawing consumes a copy of the fields. No plugin, no function or nil: no section.
+local spellByItem, spellPrepared = {}, {}
+local function itemSpell(plugin, data)
+  local fn = plugin and plugin.item_spell_info
+  if type(fn) ~= "function" or type(data) ~= "table" then return nil end
+  local key = data.id
+  local view
+  if key ~= nil then view = spellByItem[key] end -- false: cached "no spell"
+  if view == nil then
+    local ok, result = pcall(fn, data)
+    view = ok and type(result) == "table" and type(result.id) == "number" and result or false
+    if key ~= nil then spellByItem[key] = view end
+  end
+  if not view then return nil end
+  local entry = spellPrepared[view.id]
+  if not entry then
+    local fields, other = SI.metadata(view.metadata)
+    local name = type(view.name) == "string" and view.name ~= "" and view.name or nil
+    local kind = type(view.kind) == "string" and view.kind ~= "" and view.kind or nil
+    entry = { name = name or kind or "Spell", kind = name and kind or nil, ordered = SI.prepareEffects(view.effects),
+      fields = fields, other = other }
+    spellPrepared[view.id] = entry
+  end
+  return entry
+end
+
+local function spellSection(entry, s, width)
+  W.Heading("Spell info")
+  ui.PushFont(T.font.small)
+  local pad = 8 * s
+  local x, y = ui.GetCursorScreenPos()
+  local inner = math.max(1, width - 2 * pad)
+  ui.SetCursorScreenPos(x + pad, y + pad)
+  ui.BeginGroup()
+  SI.colored(entry.name, SI.EXTRA_COLOR)
+  if entry.kind then SI.colored(entry.kind, C.muted) end
+  local fields = SI.shallowCopy(entry.fields)
+  SI.metadataLine(fields, SI.META_SUMMARY, C.text)
+  SI.metadataLine(fields, SI.META_EFFICIENCY, C.text)
+  SI.drawEffects(entry.ordered, inner, s)
+  ui.Dummy(0, 6 * s)
+  SI.drawMetadata(fields, entry.other, false)
+  ui.Dummy(0, 6 * s)
+  SI.drawMetadata(fields, entry.other, true)
+  ui.EndGroup()
+  local _, bottom = ui.GetCursorScreenPos()
+  ui.DrawRectFilled(x, y, x + width, bottom + pad, C.ink[1], C.ink[2], C.ink[3], 0.04, 6 * s)
+  ui.SetCursorScreenPos(x, bottom + pad)
+  ui.Dummy(width, 0)
+  ui.PopFont()
+end
+
 local function body(win, w, h, s)
   local instance = tonumber(win:match("#(%d+)$")) or 1
   local plugin = eq.Plugin("script:qol")
@@ -556,6 +611,8 @@ local function body(win, w, h, s)
     ui.TextWrapped(extra)
     ui.PopFont()
   end
+  local spell = itemSpell(plugin, data)
+  if spell then spellSection(spell, s, cw) end
   if type(data) == "table" then versionControls(win, data.id, plugin, s, cw) end
   ui.Dummy(0, 4 * s)
   ui.EndChild()

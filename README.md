@@ -9,8 +9,9 @@ In Hailstone's login-screen **Add-ons** panel, paste `https://github.com/allhope
 ## Features
 
 - **Target levels and class**: shows the level (and optionally the class) of NPCs on nameplates and in the target window. 
-- **Spell display**: a richer spell window with readable effects, casting details and spell IDs.
+- **Spell display**: a richer spell window with readable effects (every effect has a readable name; the value is the raw spell value), casting details, spell IDs and damage per mana (raw spell values: no focus, resist, partials or crits; area spells show the per-target value).
 - **Item display**: a richer item window with extra information such as base and tribute value, delay/damage ratio and lore.
+- **Spell info in the item display**: an item's focus, proc, worn, click or scroll spell, with its effects and casting details laid out as in the spell display.
 - **Other item versions** (Project Triune only, off by default): buttons to open the Enchanted or Legendary version of an item.
 - **Target line on map and minimap**: draws a line from you to your target on the large map and on the minimap.
 - **All NPCs on the map**: shows every living NPC on the maps.

@@ -110,7 +110,7 @@ assert(rows[5].is_raw and rows[5].min:find('SPA 1', 1, true))
 assert(rows[6].is_raw and rows[6].min:find('SPA ?', 1, true))
 for i = 4, 6 do assert(fx.format(rows[i]) == rows[i].min) end
 
--- An SPA without a kind is a named raw line; flags show their name only; HP is per tick for a buff.
+-- An SPA without a kind gets a shape from its name; flags show their name only; HP is per tick for a buff.
 rows = fx.rows({class_level = {10}, duration_cap = 10, effects = {
   {effect = 31, base = 1, base2 = 0, max = 0, formula = 100},
   {effect = 12, base = 1, base2 = 0, max = 0, formula = 100},
@@ -118,11 +118,53 @@ rows = fx.rows({class_level = {10}, duration_cap = 10, effects = {
   {effect = 3, base = 30, base2 = 0, max = 0, formula = 100},
   {effect = 4, base = 5, base2 = 0, max = 0, formula = 1005},
 }})
-assert(rows[1].is_raw and rows[1].min:find('Mez (SPA 31', 1, true))
+assert(rows[1].name == 'Mez' and rows[1].min == '' and not rows[1].is_raw)
 assert(rows[2].name == 'Invisibility' and fx.format(rows[2]) == 'Invisibility')
 assert(rows[3].name == 'HP per tick' and rows[3].min == '+20')
 assert(rows[4].name == 'Movement Speed' and rows[4].min == '+30%')
 assert(rows[5].is_raw, 'tick based formulas are not shown')
+
+-- Shape rule (D048): every named SPA gets a normal row. SPA 20 Blind is a flag (name only); SPA 58 Illusion is an
+-- id (base is a race id); SPA 120 Heal Rate is a percentage; SPA 24 Stamina is a number.
+rows = fx.rows({class_level = {10}, effects = {
+  {effect = 20, base = 1, base2 = 0, max = 0, formula = 100},
+  {effect = 58, base = 130, base2 = 0, max = 0, formula = 100},
+  {effect = 120, base = 10, base2 = 0, max = 0, formula = 100},
+  {effect = 24, base = 5, base2 = 0, max = 0, formula = 100},
+}})
+assert(#rows == 4)
+assert(rows[1].name == 'Blind' and rows[1].min == '' and not rows[1].is_raw)
+assert(fx.format(rows[1]) == 'Blind')
+assert(rows[2].name == 'Illusion' and rows[2].min == '#130' and not rows[2].is_raw)
+assert(fx.format(rows[2]) == 'Illusion #130')
+assert(rows[3].name == 'Heal Rate' and rows[3].min == '+10%' and not rows[3].is_raw)
+assert(fx.format(rows[3]) == 'Heal Rate +10%')
+assert(rows[4].name == 'Stamina' and rows[4].min == '+5' and not rows[4].is_raw)
+assert(fx.format(rows[4]) == 'Stamina +5')
+
+-- The rule does not show base2; the base2 guard is only for curated kinds.
+rows = fx.rows({class_level = {10}, effects = {
+  {effect = 24, base = 10, base2 = 5, max = 0, formula = 100},
+}})
+assert(rows[1].name == 'Stamina' and rows[1].min == '+10' and not rows[1].is_raw)
+
+-- A scaling rule-derived slot shows its value at the class level; without one it stays raw.
+rows = fx.rows({class_level = {20}, effects = {
+  {effect = 24, base = 10, base2 = 0, max = 0, formula = 101},
+}})
+assert(rows[1].name == 'Stamina' and rows[1].min == '+20' and rows[1].min_level == 20)
+assert(rows[1].max == nil and rows[1].scale == '+1 per 2 levels' and not rows[1].is_raw)
+assert(fx.format(rows[1]) == 'Stamina +20 (level 20), +1 per 2 levels')
+rows = fx.rows({effects = {
+  {effect = 24, base = 10, base2 = 0, max = 0, formula = 101},
+}})
+assert(rows[1].is_raw and rows[1].min:find('SPA 24', 1, true))
+
+-- An SPA with no name in the generated table stays raw.
+rows = fx.rows({class_level = {10}, effects = {
+  {effect = 9999, base = 1, base2 = 0, max = 0, formula = 100},
+}})
+assert(rows[1].is_raw and rows[1].min:find('SPA 9999', 1, true))
 
 -- Slow below the 100 baseline subtracts the change.
 rows = fx.rows({class_level = {10}, effects = {
@@ -136,16 +178,29 @@ rows = fx.rows({class_level = {10}, effects = {
 }})
 assert(rows[1].is_raw and rows[1].min:find('SPA 11', 1, true))
 
--- AC's converted/rounded growth cannot be described using its raw growth rate.
+-- An uncapped AC shows its value at the spell's level; its converted/rounded growth cannot be described using
+-- the raw growth rate, so the scale note stays generic.
 rows = fx.rows({class_level = {10}, effects = {
   {effect = 1, base = 25, base2 = 0, max = 0, formula = 101},
   {effect = 4, base = 1, base2 = 0, max = 1000, formula = 101},
 }})
-assert(rows[1].is_raw)
+assert(rows[1].name == 'Armor Class' and not rows[1].is_raw)
+assert(rows[1].min == '+9' and rows[1].min_level == 10)
+assert(rows[1].max == nil and rows[1].scale == 'scales with level')
+assert(fx.format(rows[1]) == 'Armor Class +9 (level 10), scales with level')
 -- A cap the highest level never reaches is shown without a level.
 assert(rows[2].max == '+1000' and rows[2].max_level == nil and rows[2].min == '+6')
 -- The charisma spacer (base 0/1) is not a row.
 assert(#fx.rows({class_level = {10}, effects = {{effect = 10, base = 1, base2 = 0, max = 0, formula = 100}}}) == 0)
+
+-- Feral Spirit (spell 139) slot 6: an uncapped AC at class level 18 is a normal row, not a raw line.
+rows = fx.rows({id = 139, class_level = {18}, effects = {
+  {effect = 1, base = 15, base2 = 0, max = 0, formula = 101},
+}})
+assert(#rows == 1 and rows[1].name == 'Armor Class' and not rows[1].is_raw)
+assert(rows[1].min == '+7' and rows[1].min_level == 18)
+assert(rows[1].max == nil and rows[1].scale == 'scales with level')
+assert(fx.format(rows[1]) == 'Armor Class +7 (level 18), scales with level')
 
 -- Inferno Shield: damage shield (SPA 59, formula 109) and fire resist (SPA 46).
 rows = fx.rows({class_level = {255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 28}, effects = {
@@ -155,6 +210,20 @@ rows = fx.rows({class_level = {255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
 assert(rows[1].name == 'Damage Shield' and rows[1].min == '13' and rows[1].min_level == 28)
 assert(rows[1].max == '15' and rows[1].max_level == 36 and not rows[1].is_raw)
 assert(rows[2].name == 'Fire Resist' and rows[2].min == '+20' and not rows[2].is_raw)
+
+-- Rune I: base is the amount absorbed, max the cap, formula 111 (+6 per level above 16).
+rows = fx.rows({class_level = {13}, effects = {
+  {effect = 55, base = 35, base2 = 0, max = 65, formula = 111},
+}})
+assert(rows[1].name == 'Rune' and not rows[1].is_raw)
+assert(rows[1].min == '35' and rows[1].min_level == 13)
+assert(rows[1].max == '65' and rows[1].max_level == 21)
+assert(fx.format(rows[1]) == 'Rune 35 (level 13) to Rune 65 (level 21)')
+-- An uncapped rune scales without a made-up cap.
+rows = fx.rows({class_level = {13}, effects = {
+  {effect = 55, base = 35, base2 = 0, max = 0, formula = 111},
+}})
+assert(rows[1].min == '35' and rows[1].max == nil and rows[1].scale == 'scales with level')
 
 -- Stun: base ms, base2 ms against a player, max = highest target level.
 rows = fx.rows({class_level = {20}, effects = {
@@ -228,6 +297,17 @@ assert(rows[1].name == 'Increase Spell Haste' and rows[1].min == '+11%' and rows
 rows = fx.rows({class_level = {1}, effects = {{effect = 337, base = 50, base2 = 0, max = 0, formula = 100}}})
 assert(rows[1].name == 'XP Increase' and rows[1].min == '+50%' and not rows[1].is_raw and rows[1].note == nil)
 
+-- Allure of Death (NEC 18) slot 3: Casting Level (SPA 112) is a signed number. The client names it but never
+-- applies it, so the name and base are all there is; SPA 272 has the same name and gets the same number row.
+rows = fx.rows({class_level = {255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 18},
+  effects = {{effect = 112, base = 2, base2 = 0, max = 0, formula = 100}}})
+assert(#rows == 1 and rows[1].name == 'Casting Level' and not rows[1].is_raw)
+assert(rows[1].min == '+2')
+assert(fx.format(rows[1]) == 'Casting Level +2')
+-- SPA 272 carries the same client name; the shape rule shows it as a number too (the name is all the client gives).
+rows = fx.rows({class_level = {18}, effects = {{effect = 272, base = 2, base2 = 0, max = 0, formula = 100}}})
+assert(rows[1].name == 'Casting Level2' and rows[1].min == '+2' and not rows[1].is_raw)
+
 -- Summoned items show their ids; the bag contents are one row.
 rows = fx.rows({class_level = {17}, effects = {
   {effect = 32, base = 17310, base2 = 0, max = 0, formula = 1},
@@ -258,5 +338,63 @@ rows = fx.rows({class_level = {28}, effects = {
   {effect = 168, base = 10, base2 = 0, max = 0, formula = 100},
 }})
 assert(rows[1].name == 'Melee Mitigation' and rows[1].min == '+10%' and rows[2].min == '-10%')
+
+-- Focus spells: one row for the modifier, one muted row that joins every limit.
+local focus = {id = 1, class_level = {255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255},
+  effects = {
+    {effect = 141, base = 1, base2 = 0, max = 0, formula = 100},   -- Limit Instant
+    {effect = 138, base = 0, base2 = 0, max = 0, formula = 100},   -- Limit Spell Type
+    {effect = 348, base = 1, base2 = 0, max = 0, formula = 100},   -- Limit Mana Min
+    {effect = 142, base = 1, base2 = 0, max = 0, formula = 100},   -- Limit Min Level
+    {effect = 311, base = 0, base2 = 0, max = 0, formula = 100},   -- Limit Combat Skills
+    {effect = 137, base = 0, base2 = 0, max = 0, formula = 100},   -- Limit Effect
+    {effect = 339, base = 100, base2 = 25543, max = 0, formula = 100}, -- Trigger On Cast
+  }}
+rows = fx.rows(focus, function(id) return id == 25543 and 'Arcane Echo' or nil end)
+assert(#rows == 2, 'one focus row and one limits row')
+assert(rows[1].name == 'Trigger on Cast' and rows[1].min == '100%' and rows[1].note == 'Arcane Echo')
+assert(rows[1].is_focus and not rows[1].is_raw)
+assert(rows[2].name == 'Limits' and rows[2].is_limit and not rows[2].is_raw)
+assert(rows[2].min == 'instant, detrimental, mana >= 1, level >= 1, no combat skills, HP effect')
+assert(fx.format(rows[2]) == 'Limits: instant, detrimental, mana >= 1, level >= 1, no combat skills, HP effect')
+for _, row in ipairs(rows) do assert(not row.is_raw) end
+
+-- A focus modifier without limits has no Limits row.
+rows = fx.rows({class_level = {1}, effects = {{effect = 124, base = 25, base2 = 0, max = 0, formula = 100}}})
+assert(#rows == 1 and rows[1].name == 'Spell Damage' and rows[1].min == '+25%')
+assert(rows[1].is_focus and not rows[1].is_limit and not rows[1].is_raw)
+assert(fx.format(rows[1]) == 'Spell Damage +25%')
+
+-- A limit SPA that is not in the curated LIMIT table stays raw: its base is a condition value (a class id, a
+-- spell id, a bitmask), not an amount, so the shape rule must not show it as +N.
+rows = fx.rows({class_level = {1}, effects = {{effect = 403, base = 1, base2 = 0, max = 0, formula = 100}}})
+assert(rows[1].is_raw and rows[1].min:find('SPA 403', 1, true))
+
+-- Damage per mana uses the spell's own direct damage: SPA 0 (HP) and SPA 79 (Instant HP) with a negative base.
+assert(fx.damage(nil) == nil and fx.damage({}) == nil)
+-- Direct damage: |base| + change(formula, level), capped at |max|.
+assert(fx.damage({class_level = {20}, effects = {
+  {effect = 0, base = -50, base2 = 0, max = 100, formula = 102},
+}}) == 70)
+-- A DoT's SPA 0 is per tick: per-tick x duration_cap ticks.
+assert(fx.damage({class_level = {20}, duration_cap = 5, effects = {
+  {effect = 0, base = -10, base2 = 0, max = 0, formula = 100},
+}}) == 50)
+-- SPA 79 is always instant, even with a duration.
+assert(fx.damage({class_level = {20}, duration_cap = 5, effects = {
+  {effect = 79, base = -30, base2 = 0, max = 0, formula = 100},
+}}) == 30)
+-- Every damage slot is summed.
+assert(fx.damage({class_level = {20}, effects = {
+  {effect = 0, base = -50, base2 = 0, max = 100, formula = 102},
+  {effect = 79, base = -30, base2 = 0, max = 0, formula = 100},
+}}) == 100)
+-- A heal is not damage; a scaling damage slot without a class level is not guessed.
+assert(fx.damage({class_level = {20}, effects = {
+  {effect = 100, base = 10, base2 = 0, max = 0, formula = 100},
+}}) == nil)
+assert(fx.damage({effects = {
+  {effect = 0, base = -50, base2 = 0, max = 100, formula = 102},
+}}) == nil)
 
 print('spell effects: ok')

@@ -103,4 +103,47 @@ assert(info.spell({}) == nil)
 assert(info.spell({id = math.huge, mana = 0/0, range = 'bad', resist_adj = math.huge}) == nil)
 assert(info.item({value = math.huge, favor = 'bad', damage = false, lore = {}}) == nil)
 
+-- The spell an item carries: focus, proc, worn, click, scroll; the first positive integer id wins.
+local id, kind = info.item_spell({focus_spell = 1, proc_spell = 2, worn_spell = 3, click_spell = 4,
+  scroll_spell = 5})
+assert(id == 1 and kind == 'Focus')
+id, kind = info.item_spell({proc_spell = 2, worn_spell = 3, click_spell = 4})
+assert(id == 2 and kind == 'Proc')
+id, kind = info.item_spell({focus_spell = 0, proc_spell = -1, worn_spell = 3, click_spell = 4})
+assert(id == 3 and kind == 'Worn')
+id, kind = info.item_spell({focus_spell = math.huge, proc_spell = 0/0, worn_spell = '3',
+  click_spell = 4, scroll_spell = 5})
+assert(id == 4 and kind == 'Click')
+id, kind = info.item_spell({click_spell = 1.5, scroll_spell = 5})
+assert(id == 5 and kind == 'Scroll')
+for _, bad in ipairs({nil, false, 'x', 42, {}, {id = 9, focus_spell = 0, click_spell = -4}}) do
+  assert(info.item_spell(bad) == nil)
+end
+
+-- Damage per mana: raw direct damage over mana, its own header line.
+text = info.spell({id = 1, mana = 60, class_level = {20}, effects = {
+  {effect = 0, base = -50, base2 = 0, max = 100, formula = 102},
+}})
+assert(text:find('Damage per mana: 1.17', 1, true))
+assert(not info.spell({id = 1, mana = 60, class_level = {20}, effects = {
+  {effect = 100, base = 10, base2 = 0, max = 0, formula = 100},
+}}):find('Damage per mana', 1, true))
+assert(not info.spell({id = 1, mana = 0, class_level = {20}, effects = {
+  {effect = 0, base = -50, base2 = 0, max = 100, formula = 102},
+}}):find('Damage per mana', 1, true))
+
+-- An area spell's damage slot is per target, so the line says so; a single-target spell keeps the plain value.
+local areaSpell = {id = 1, mana = 60, class_level = {20}, target_type = 8, ae_range = 25, effects = {
+  {effect = 0, base = -50, base2 = 0, max = 100, formula = 102},
+}}
+text = info.spell(areaSpell)
+assert(text:find('Damage per mana: 1.17 (per target)', 1, true), text)
+areaSpell.target_type, areaSpell.ae_range = 5, 0
+text = info.spell(areaSpell)
+assert(text:find('Damage per mana: 1.17', 1, true), text)
+assert(not text:find('(per target)', 1, true), text)
+areaSpell.target_type = 4
+text = info.spell(areaSpell)
+assert(text:find('Damage per mana: 1.17 (per target)', 1, true), text)
+
 print('info: ok')

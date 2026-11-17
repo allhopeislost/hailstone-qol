@@ -8,6 +8,7 @@ local requested, requestCalls = {}, 0
 local now, width, invisibleClick, hovered, checkboxClick, tierClick = 10, 380, false, false, false, nil
 local pluginAvailable, requestImpl = true, nil
 local versionsAvailable = true
+local spellInfoImpl, spellInfoCalls = nil, 0
 
 local color = {1, 1, 1, 1}
 local T = {
@@ -85,6 +86,10 @@ eq = {
         return require('core.info').item(record)
       end,
       request_item_preview = requestImpl,
+      item_spell_info = spellInfoImpl and function(record)
+        spellInfoCalls = spellInfoCalls + 1
+        return spellInfoImpl(record)
+      end,
     }
     plugin.item_versions_available = function() return versionsAvailable end
     return plugin
@@ -135,6 +140,7 @@ dofile = function(path)
   if path == 'lib/hud.lua' then return hud end
   if path == 'lib/widgets.lua' then return W end
   if path == 'lib/stml.lua' then return stml end
+  if path == 'spellinfo.lua' then return realDofile('ui/modern/spellinfo.lua') end
   return realDofile(path)
 end
 
@@ -173,6 +179,7 @@ local function load()
   requested, requestCalls = {}, 0
   now, width, invisibleClick, hovered, checkboxClick, tierClick = 10, 380, false, false, false, nil
   pluginAvailable, versionsAvailable = true, true
+  spellInfoImpl, spellInfoCalls = nil, 0
   requestImpl = function(id)
     requestCalls = requestCalls + 1
     requested[#requested + 1] = id
@@ -425,5 +432,53 @@ frame()
 frame()
 assert(infoCalls == 1, 'a cached nil is not re-fetched every frame')
 assert(not has(headings, 'Additional information'))
+
+-- Spell info: the plugin's item spell in the spell window's layout, between Additional information and
+-- Other versions; cached per item id; absent for nil, a missing function or a missing plugin.
+load()
+spellInfoImpl = function(record)
+  if record.id ~= 51907 then return nil end
+  return {id = 2600, name = 'Burning Affliction', kind = 'Focus',
+    metadata = 'Spell ID: 2600\nMana: 40\nCast: 2.00s',
+    effects = {{name = 'Strength', min = '+20', min_level = 11, max = '+45', max_level = 60}}}
+end
+item(1, 51907, 'Focus Item', 'desc')
+frame()
+assert(spellInfoCalls == 1)
+assert(indexOf(headings, 'Additional information') < indexOf(headings, 'Spell info'))
+assert(indexOf(headings, 'Spell info') < indexOf(headings, 'Other versions'))
+assert(has(colored, 'Burning Affliction') and has(colored, 'Focus'))
+assert(has(texts, 'MINIMUM') and has(texts, 'MAXIMUM') and has(texts, '+20 (L11)') and has(texts, '+45 (L60)'))
+assert(has(colored, 'L = caster level') and has(colored, 'Mana: 40') and has(colored, 'Cast: 2.00s'))
+assert(has(colored, 'Spell ID: 2600'))
+frame()
+assert(spellInfoCalls == 1, 'item_spell_info is cached per item id')
+assert(has(colored, 'Spell ID: 2600'), 'the cached spell is still drawn every frame')
+item(1, 51908, 'Plain Item', 'desc')
+frame()
+frame()
+assert(spellInfoCalls == 2, 'a nil result is cached too')
+assert(not has(headings, 'Spell info'))
+-- No name: the kind is the title; no kind either: 'Spell'.
+load()
+spellInfoImpl = function(record)
+  return {id = 700 + record.id, kind = record.id == 1 and 'Worn' or nil, metadata = '', effects = {}}
+end
+item(1, 1, 'Unnamed', 'desc')
+frame()
+assert(has(headings, 'Spell info') and has(colored, 'Worn'))
+item(1, 2, 'Unnamed', 'desc')
+frame()
+assert(has(colored, 'Spell'))
+-- A function that errors, or a plugin without it, shows nothing and does not fail.
+load()
+spellInfoImpl = function() error('broken') end
+item(1, 51907, 'Broken', 'desc')
+frame()
+assert(not has(headings, 'Spell info') and has(headings, 'Additional information'))
+load()
+item(1, 51907, 'No function', 'desc')
+frame()
+assert(not has(headings, 'Spell info'))
 
 print('item display custom client contract: ok')

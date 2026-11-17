@@ -20,11 +20,28 @@ local function append(lines, label, value)
   if value ~= nil then lines[#lines + 1] = label .. value end
 end
 
+-- Target types whose damage slot applies to each target in the area rather than once per cast. The client's
+-- TargetType enum names 2 (AE PC v1), 4 (AE around caster) and 8 (AE around target); its cast check lists
+-- 21, 22, 23 and 28 as targeted AE types; target_type_name in tlo_game.cpp names 20, 24, 25, 36, 37 and 40.
+local area_target_types = {[2] = true, [4] = true, [8] = true, [20] = true, [21] = true, [22] = true,
+  [23] = true, [24] = true, [25] = true, [28] = true, [36] = true, [37] = true, [40] = true}
+
+local function is_area_spell(s)
+  local ae_range = number(s.ae_range)
+  if ae_range and ae_range > 0 then return true end
+  return area_target_types[integer(s.target_type)] == true
+end
+
 local function spell_header_lines(s)
   local lines = {}
   append(lines, 'Spell ID: ', number(s.id))
   append(lines, 'Level: ', number(s.level))
   append(lines, 'Mana: ', number(s.mana))
+  local damage, mana = spell_effects.damage(s), number(s.mana)
+  if damage and mana and mana > 0 then
+    local suffix = is_area_spell(s) and ' (per target)' or ''
+    lines[#lines + 1] = ('Damage per mana: %.2f%s'):format(damage / mana, suffix)
+  end
   append(lines, 'Endurance: ', number(s.endurance))
 
   local cast = number(s.cast_time)
@@ -88,6 +105,23 @@ function M.spell_details(s, lookup)
   local rows = spell_effects.rows(s, lookup) or {}
   local header = spell_header_lines(s)
   return {effects = rows, metadata = header}
+end
+
+-- The spell an item record carries, in the order a player most wants explained: focus, proc, worn,
+-- click, scroll. Returns (id, kind) for the first positive, finite integer id, or nil. Only the
+-- record's own id fields are read; nothing is looked up by name.
+M.item_spell_fields = {
+  {'focus_spell', 'Focus'}, {'proc_spell', 'Proc'}, {'worn_spell', 'Worn'},
+  {'click_spell', 'Click'}, {'scroll_spell', 'Scroll'},
+}
+
+function M.item_spell(item)
+  if type(item) ~= 'table' then return nil end
+  for _, field in ipairs(M.item_spell_fields) do
+    local id = number(item[field[1]])
+    if id and id >= 1 and id % 1 == 0 then return id, field[2] end
+  end
+  return nil
 end
 
 function M.item(item)

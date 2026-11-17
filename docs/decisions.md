@@ -409,6 +409,20 @@ switch for Esc would work against the "as few switches as possible" rule.
 Rules out: editing the client's `lib/escape.lua` (client source is reference material only); a new option;
 changing how the spell and item displays close.
 
+## D042 An item's spell is shown from its own spell ids
+Status: Accepted
+Recorded: 2026-11-16
+Decision: the plugin function `item_spell_info(item)` takes the item window's record and returns the spell it
+carries as `{id, name, kind, effects, metadata}`, with `effects` and `metadata` in exactly the `spell_view` shape.
+The spell id comes from the record's own fields in a fixed order: `focus_spell`, `proc_spell`, `worn_spell`,
+`click_spell`, `scroll_spell`; the first positive integer id wins and `kind` names that field (`Focus`, `Proc`,
+`Worn`, `Click`, `Scroll`). `id` and `name` come from `hs.spell(id)`. It is part of the `item_info` switch, and
+returns nil when that is off, the record has no spell id, or `hs.spell` is missing or has no record.
+Why: a focus, proc or worn effect is what a player most wants explained on an item, and the client hands over the
+id (D006), so the spell window's formatting can be reused without guessing (D005). One switch covers all item
+information (D003); missing fields degrade to nil (D007).
+Rules out: looking an item's spell up by name or description; a separate option; showing more than one spell.
+
 ## D043 Esc-to-close reads the key in the window, not hud.esc.*
 Status: Accepted
 Recorded: 2026-11-16
@@ -425,3 +439,72 @@ which the pack never reads. Ingame the menu item showed on while Escape did noth
 press and the shared selection could not see our screens. Reading the key from ImGui bypasses that hand-off.
 Rules out: writing the pack's `hud.esc.*` (no plugin API can); depending on which window draws first; a new
 option or a change to the spell and item displays.
+
+## D044 Focus spells show one modifier row and one limits row
+Status: Accepted
+Recorded: 2026-11-17
+Decision: A focus spell's modifier effects each get their own row (for example `Spell Damage +25%`), and every
+limit slot is joined into one muted, wrapped `Limits` row (`instant, detrimental, mana >= 1, ...`) with no
+MINIMUM/MAXIMUM columns. A limit or focus SPA whose meaning or sign the client source does not confirm stays a
+named raw line (D005). The plain-text API returns `Limits: <phrases>`.
+Why: A focus spell is read as "what it boosts, and under which conditions"; one line per limit slot buries that.
+Rules out: guessing a sign for an unapplied focus SPA; a new option or a separate window.
+
+## D045 Damage per mana is raw spell damage on its own line
+Status: Accepted
+Recorded: 2026-11-17
+Decision: the spell window and the item display's spell section show `Damage per mana: <value>` on its own line,
+directly under the summary line (`Duration: ... Mana: ... Classes: ...`) and in the same colour. The value is the
+spell's own direct damage divided by its mana: SPA 0 (`HP`) and SPA 79 (`Instant HP`) with a negative base, each
+slot `|base| + change(formula, level)` capped at `|max|`, with `level` the spell's lowest class level. SPA 0 with a
+duration is damage per tick, so its total is per-tick x `duration_cap` ticks; SPA 79 is always instant. The line is
+omitted when there is no damage slot, a scaling slot has no class level, the total is 0, or the spell costs no mana.
+Why: a caster comparing nukes wants the efficiency at a glance, and the client already hands over the raw effects
+and mana (D006), so it needs no new data or option.
+Rules out: focus modifiers, resist, partials and crits (the client does not expose them here; a later task may add
+focus); a new option, file or switch; guessing a level for a scaling slot.
+
+## D046 An uncapped AC effect is a normal row with a generic scale note
+Status: Accepted
+Recorded: 2026-11-17
+Decision: an AC effect (SPA 1) without a cap is shown as a normal effect row: its value at the spell's lowest class
+level, no maximum, and the muted note `scales with level` (for example `Armor Class +7 (level 18), scales with
+level`). The per-level rate is not shown, because the displayed AC is `floor(raw * 3 / 10)`, so the raw rate (for
+example "+1 per 2 levels") would not describe what the player sees. A capped AC keeps its current row with the
+minimum and the capped maximum and their levels.
+Why: an uncapped AC slot (Feral Spirit, spell 139) fell back to a raw `Slot 6: Armor Class (SPA 1, base 15, ...)`
+line, which is unreadable next to the other effects; the value and its level are known, only the rate is not
+describable.
+Rules out: inventing a per-level AC rate; a new option, file or switch; changing the capped AC row.
+
+## D047 An area spell's damage per mana is labelled per target
+Status: Accepted
+Recorded: 2026-11-17
+Decision: for an area spell the `Damage per mana` line (D045) ends with ` (per target)`, for example
+`Damage per mana: 1.17 (per target)`; a single-target spell keeps the plain value. A spell counts as an area spell
+when its `ae_range` is greater than 0, or when its `target_type` is one of 2, 4, 8, 20, 21, 22, 23, 24, 25, 28, 36,
+37 or 40. The damage slot of those types applies to each target in the area, while the mana is spent once per cast,
+so the unlabelled number read as damage per cast. The total damage is not shown because the client does not expose
+the spell's target count.
+Why: the number is correct but was easy to misread as the whole cast's damage; the label costs no new data, option
+or arithmetic.
+Rules out: showing a total or a target count (not available from the client); a new option, file or switch; changing
+the damage arithmetic; adding a target type the client source does not name.
+
+## D048 Every named SPA gets a normal effect row
+Status: Accepted
+Recorded: 2026-11-17
+Decision: an effect slot whose SPA has no curated `KIND`/`DISPLAY` entry is shown as a normal row instead of a raw
+line. Precedence is `KIND`/`DISPLAY`, then `FOCUS`, then `LIMIT`, then the shape rule; an SPA with no name in the
+generated table, or one whose value cannot be shown, stays a raw line. The rule derives the row shape from the
+client's SPA name: a pure state is a **flag** (name only), a record id is an **id** (`#N`), a name that says it is a
+percentage is a **percent** (`+N%`), and everything else is a **number** (`+N`). The value uses the same arithmetic
+as the curated numeric rows: `|base| + change(formula, level)`, capped at `|max|`, with `level` the spell's lowest
+class level; a scaling slot without a class level stays raw, and `base2` is not shown. The existing skips stay: SPA
+254 (empty slot), the charisma spacer (SPA 10 with base <= 1 or > 255), and the `base2 ~= 0` guard for curated kinds.
+Why: a raw line such as `Slot 3: Casting Level (SPA 112, base 2, ...)` is unreadable next to the other effects, and
+one name-based rule covers every SPA the client names without hundreds of per-SPA entries to maintain.
+Rules out: a new option, file or marker character; guessing a level for a scaling slot; showing `base2`; changing a
+curated row's output. Limitation: the shape follows the client's name, so an unusual SPA whose name does not
+describe its value may need a curated `KIND` entry later. The generated name table covers SPA 0-500; an SPA it does
+not name (for example 501-528 in the client's `spa_ids.h`) stays raw until the table is regenerated.
