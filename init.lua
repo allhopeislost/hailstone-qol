@@ -52,7 +52,8 @@ end)
 local function spellView(spell)
   local details = info.spell_details(spell, function(spellId)
     local other = hs.spell(spellId)
-    return type(other) == 'table' and other.name or nil
+    if type(other) ~= 'table' then return nil end
+    return {name = other.name, summary = info.spell_summary(other)}
   end)
   return {effects = details.effects, metadata = table.concat(details.metadata, '\n')}
 end

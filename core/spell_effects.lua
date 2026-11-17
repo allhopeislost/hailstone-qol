@@ -108,6 +108,18 @@ local TARGET = { [1] = 'line of sight', [3] = 'group teleport', [4] = 'area arou
   [13] = 'lifetap', [14] = 'pet', [15] = 'corpse', [41] = 'group' }
 local SPELL_TYPE = { [0] = 'detrimental', [1] = 'beneficial', [2] = 'beneficial group-only' }
 
+-- lookup(id) may return a name string (the old contract) or {name = <string>, summary = <string|nil>}.
+local function lookup_name(found)
+  if type(found) == 'string' then return found ~= '' and found or nil end
+  if type(found) == 'table' and type(found.name) == 'string' and found.name ~= '' then return found.name end
+end
+
+local function lookup_summary(found)
+  if type(found) == 'table' and type(found.summary) == 'string' and found.summary ~= '' then
+    return found.summary
+  end
+end
+
 local LIMIT = {}
 local function limit(spa, fn) LIMIT[spa] = fn end
 
@@ -140,7 +152,7 @@ limit(138, function(effect) return SPELL_TYPE[effect.base] end)
 limit(139, function(effect, lookup)
   local id = math.abs(effect.base)
   local found = type(lookup) == 'function' and lookup(id)
-  local name = type(found) == 'string' and found ~= '' and found or ('#' .. id)
+  local name = lookup_name(found) or ('#' .. id)
   return (effect.base < 0 and 'not spell ' or 'spell ') .. name
 end)
 limit(140, function(effect) return 'duration >= ' .. duration(effect.base * 6) end)
@@ -168,7 +180,9 @@ local function focusRow(slot, effect, lookup)
     row.min = ('%d%%'):format(effect.base)
     if effect.base2 > 0 then
       local found = type(lookup) == 'function' and lookup(effect.base2)
-      row.note = type(found) == 'string' and found ~= '' and found or ('#' .. effect.base2)
+      local spellName = lookup_name(found) or ('#' .. effect.base2)
+      local summary = lookup_summary(found)
+      row.note = summary and (spellName .. ': ' .. summary) or spellName
     end
   elseif f.percent then
     row.min = ('%+d%%'):format(f.invert and -effect.base or effect.base)
@@ -488,8 +502,10 @@ local function readableRow(slot, effect, level, ticks, lookup)
   if kind == 'proc' then
     if base <= 0 or formula ~= 100 and formula ~= 0 then return nil end
     local found = type(lookup) == 'function' and lookup(base)
-    return { slot = slot, spa = spa, name = label, min = type(found) == 'string' and found ~= '' and found
-      or ('#' .. base), is_raw = false,
+    local spellName = lookup_name(found) or ('#' .. base)
+    local summary = lookup_summary(found)
+    return { slot = slot, spa = spa, name = label, min = summary and (spellName .. ': ' .. summary) or spellName,
+      is_raw = false,
       note = base2 ~= 0 and ('proc rate %+d%%'):format(base2) or nil }
   end
   if kind == 'item' then
@@ -638,6 +654,28 @@ function M.format(row)
   end
   if row.note ~= nil then label = label .. ', ' .. row.note end
   return label
+end
+
+-- A one-line description of a spell for a proc or trigger row: its direct damage with the resist type when the
+-- client names one, otherwise its first one or two effect rows. Built without a lookup, so it cannot recurse.
+function M.summary(spell)
+  local damage = M.damage(spell)
+  if damage then
+    local resist = type(spell) == 'table' and isInteger(spell.resist) and spell.resist ~= 0
+      and RESIST[spell.resist] or nil
+    if resist then return ('%d %s damage'):format(damage, resist) end
+    return ('%d damage'):format(damage)
+  end
+  local parts = {}
+  for _, row in ipairs(M.rows(spell)) do
+    local text = M.format(row)
+    if text then
+      parts[#parts + 1] = text
+      if #parts == 2 then break end
+    end
+  end
+  if #parts == 0 then return nil end
+  return table.concat(parts, ', ')
 end
 
 return M

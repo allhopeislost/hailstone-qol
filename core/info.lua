@@ -94,6 +94,11 @@ function M.spell_effects(s, lookup)
   return spell_effects.rows(s, lookup)
 end
 
+-- A one-line description of a spell (its damage or first effect rows), for a proc or trigger row.
+function M.spell_summary(s)
+  return spell_effects.summary(s)
+end
+
 -- Split view for UI rendering: {effects = rows, metadata = header}.
 -- effects is the M.spell_effects(s) array (possibly empty); metadata
 -- is the spell header without effect lines and without cast messages

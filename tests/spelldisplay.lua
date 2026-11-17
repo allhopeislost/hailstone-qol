@@ -3,7 +3,7 @@ local displayed, extras, ids, children = {}, {}, {}, {}
 local lines, rects, spellViewCalls = 0, 0, 0
 local enabled, pluginAvailable, currentId = true, true, 701
 local colors = {text = {1, 1, 1, 1}, muted = {.5, .5, .5, 1}, ink = {0, 0, 0, 1}}
-local drawn, inline = {}, {}
+local drawn, inline, cyan = {}, {}, {}
 local T = {
   color = colors, font = {normal = {}, small = {}},
   Icon = function() end, TextSize = function() return 10, 10 end,
@@ -29,6 +29,7 @@ ui = {
   Dummy = function() end, PushTextWrapPos = function() end, PopTextWrapPos = function() end,
   TextColored = function(r, g, b, a, text)
     inline[#inline + 1] = text
+    if r == 0 and g == 1 and b == 1 and a == 1 then cyan[#cyan + 1] = text end
     if text:find('Spell ID:', 1, true) then extras[#extras + 1] = text end
   end,
   EndChild = function() end,
@@ -77,10 +78,19 @@ assert(table.concat(drawn, '|'):find('PC 2s, up to level 55', 1, true))
 assert(table.concat(drawn, '|'):find('+1% per 2 levels', 1, true))
 assert(table.concat(inline, '|'):find('Duration: 1h    Mana: 40    Classes: BST 11', 1, true))
 assert(table.concat(inline, '|'):find('Cast: 6.50s    Recovery: 1.50s    Recast: 1.50s', 1, true))
--- Damage per mana is its own line, directly under the summary line.
-local ownLine = false
-for _, entry in ipairs(inline) do if entry == 'Damage per mana: 1.17' then ownLine = true end end
+-- Damage per mana is its own line, the first line of the blue metadata block: drawn in the cyan
+-- EXTRA_COLOR (0,1,1,1) like Cast/Recovery/Recast, above them, and no longer part of the summary line.
+local ownLine, ownIndex, castIndex = false, nil, nil
+for i, entry in ipairs(inline) do
+  if entry == 'Damage per mana: 1.17' then ownLine = true; ownIndex = i end
+  if entry == 'Cast: 6.50s    Recovery: 1.50s    Recast: 1.50s' then castIndex = i end
+end
 assert(ownLine, 'damage per mana is drawn as its own line')
+assert(table.concat(cyan, '|'):find('Damage per mana: 1.17', 1, true),
+  'damage per mana is drawn in the blue metadata block')
+assert(ownIndex and castIndex and ownIndex < castIndex, 'damage per mana opens the metadata block')
+assert(not table.concat(inline, '|'):find('Classes: BST 11    Damage per mana', 1, true),
+  'damage per mana is not part of the summary line')
 assert(not table.concat(drawn, '|'):find('→', 1, true))
 assert(rects == 6 and lines >= 24) -- each panel and each geometric arrow
 local function unchanged()

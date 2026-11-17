@@ -439,7 +439,7 @@ load()
 spellInfoImpl = function(record)
   if record.id ~= 51907 then return nil end
   return {id = 2600, name = 'Burning Affliction', kind = 'Focus',
-    metadata = 'Spell ID: 2600\nMana: 40\nCast: 2.00s',
+    metadata = 'Spell ID: 2600\nMana: 40\nDamage per mana: 1.17\nCast: 2.00s',
     effects = {{name = 'Strength', min = '+20', min_level = 11, max = '+45', max_level = 60}}}
 end
 item(1, 51907, 'Focus Item', 'desc')
@@ -451,6 +451,10 @@ assert(has(colored, 'Burning Affliction') and has(colored, 'Focus'))
 assert(has(texts, 'MINIMUM') and has(texts, 'MAXIMUM') and has(texts, '+20 (L11)') and has(texts, '+45 (L60)'))
 assert(has(colored, 'L = caster level') and has(colored, 'Mana: 40') and has(colored, 'Cast: 2.00s'))
 assert(has(colored, 'Spell ID: 2600'))
+-- The shared metadata block draws damage per mana once, in the spell section.
+local efficiency = 0
+for _, text in ipairs(colored) do if text == 'Damage per mana: 1.17' then efficiency = efficiency + 1 end end
+assert(efficiency == 1, 'the spell section shows damage per mana once')
 frame()
 assert(spellInfoCalls == 1, 'item_spell_info is cached per item id')
 assert(has(colored, 'Spell ID: 2600'), 'the cached spell is still drawn every frame')

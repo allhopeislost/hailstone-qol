@@ -18,14 +18,12 @@ local descriptions = {}
 -- sorting) is done once per id and shared by every window/frame showing that spell.
 local spellCache = {}
 local META_SUMMARY, META_REMAINING = SI.META_SUMMARY, SI.META_REMAINING
-local META_EFFICIENCY = SI.META_EFFICIENCY
 local shallowCopy, metadata, metadataLine = SI.shallowCopy, SI.metadata, SI.metadataLine
 local prepareEffects, drawEffects, drawMetadata = SI.prepareEffects, SI.drawEffects, SI.drawMetadata
 
--- The summary line and, directly under it, the damage-per-mana line (its own line, same colour).
+-- The summary line; the damage-per-mana line belongs to the metadata block below the effects.
 local function summaryLine(fields, labels)
   metadataLine(fields, labels, C.text)
-  metadataLine(fields, META_EFFICIENCY, C.text)
 end
 
 -- Build the immutable preparation for one spell id. Failures (no plugin / no spell_view result)

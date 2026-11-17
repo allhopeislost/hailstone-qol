@@ -87,6 +87,16 @@ assert(details.metadata[1] == 'Spell ID: 7')
 assert(#details.effects == 1 and details.effects[1].name == 'Attack')
 assert(info.spell_effects(nil) ~= nil and #info.spell_effects(nil) == 0)
 
+-- A lookup may return a table with a name and a summary; the row shows both.
+details = info.spell_details({id = 1, class_level = {1}, effects = {
+  {effect = 339, base = 100, base2 = 42, max = 0, formula = 100},
+}}, function(id) return {name = 'Prismatic Strike II', summary = '45 fire damage'} end)
+assert(details.effects[1].note == 'Prismatic Strike II: 45 fire damage')
+assert(info.spell_summary({class_level = {20}, resist = 2, effects = {
+  {effect = 0, base = -45, base2 = 0, max = 0, formula = 100},
+}}) == '45 fire damage')
+assert(info.spell_summary(nil) == nil)
+
 text = info.item({id = 123, icon = 44, value = 250, favor = 10, damage = 8, delay = 24,
   name = 'Sword', lore = 'An ancient blade'})
 for _, fragment in ipairs({'Item ID: 123', 'Base value: 250 copper',

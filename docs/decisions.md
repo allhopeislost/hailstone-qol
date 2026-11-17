@@ -508,3 +508,29 @@ Rules out: a new option, file or marker character; guessing a level for a scalin
 curated row's output. Limitation: the shape follows the client's name, so an unusual SPA whose name does not
 describe its value may need a curated `KIND` entry later. The generated name table covers SPA 0-500; an SPA it does
 not name (for example 501-528 in the client's `spa_ids.h`) stays raw until the table is regenerated.
+
+## D049 A proc or trigger row says what the fired spell does
+Status: Accepted
+Recorded: 2026-11-17
+Decision: a proc row (SPA 85/201/323/419) and a trigger row (SPA 339) show the fired spell's name and, when one
+can be built, a one-line summary: `Prismatic Strike II: 45 fire damage`. The summary is the spell's direct damage
+(`spell_effects.damage`) with the resist name from the existing `RESIST` table in front of `damage` when the resist
+is known and not unresistable, otherwise the first one or two formatted effect rows joined by `, `. It is built
+without a lookup, so it cannot recurse. The `lookup` callback may now return either a name string (the old contract)
+or `{name = <string>, summary = <string|nil>}`; the `Limit: Spell` phrase (SPA 139) uses the name only. A string
+result keeps working exactly as before, and a lookup that returns nothing still shows `#<id>`.
+Why: a row that names a spell the player cannot see the effects of is only half the answer; the summary costs no new
+option, file or client data, and the depth stays 1 because the summary never looks anything up.
+Rules out: a new option, file or switch; a recursive lookup; showing the summary in the `Limit: Spell` phrase.
+
+## D050 Damage per mana opens the blue metadata block
+Status: Accepted
+Recorded: 2026-11-17
+Decision: supersedes D045's placement and colour. The spell window and the item display's spell section draw
+`Damage per mana: <value>` as the first line of the blue metadata block, directly above `Cast: ... Recovery: ...
+Recast: ...`, in the same cyan (`EXTRA_COLOR`) as those lines. The shared `drawMetadata` draws it, so both windows
+get it from one place; the summary line keeps only `Duration`/`Mana`/`Classes` in the normal text colour. The label,
+value, `(per target)` suffix and omission rules are unchanged.
+Why: the number is one of the spell's own figures, so it belongs with the timing and range lines rather than in the
+header; the cyan block already groups exactly those numbers.
+Rules out: a new option, file or switch; changing the value or its label; drawing it twice.

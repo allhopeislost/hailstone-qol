@@ -503,7 +503,6 @@ local function spellSection(entry, s, width)
   if entry.kind then SI.colored(entry.kind, C.muted) end
   local fields = SI.shallowCopy(entry.fields)
   SI.metadataLine(fields, SI.META_SUMMARY, C.text)
-  SI.metadataLine(fields, SI.META_EFFICIENCY, C.text)
   SI.drawEffects(entry.ordered, inner, s)
   ui.Dummy(0, 6 * s)
   SI.drawMetadata(fields, entry.other, false)

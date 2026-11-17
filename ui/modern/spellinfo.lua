@@ -27,6 +27,7 @@ local META_RANGE = { 'Range', 'AE range', 'Pushback' }
 local META_COMMON = { 'Level', 'Endurance', 'Resist type', 'Modifier', 'Skill' }
 M.META_SUMMARY = { 'Duration', 'Mana', 'Classes' }
 M.META_EFFICIENCY = { 'Damage per mana' }
+local META_EFFICIENCY = M.META_EFFICIENCY
 M.META_REMAINING = { 'Mana', 'Classes' }
 
 function M.shallowCopy(t)
@@ -179,6 +180,8 @@ function M.drawMetadata(fields, other, technical)
     metadataLine(fields, META_TECHNICAL, C.muted)
     return
   end
+  -- The efficiency line opens the blue metadata block, above the timing line.
+  metadataLine(fields, META_EFFICIENCY, EXTRA_COLOR)
   metadataLine(fields, META_TIMING, EXTRA_COLOR)
   if fields['AE range'] == '0' or fields['AE range'] == '0.0' then fields['AE range'] = nil end
   metadataLine(fields, META_RANGE, EXTRA_COLOR)

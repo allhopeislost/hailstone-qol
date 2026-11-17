@@ -332,6 +332,66 @@ assert(fx.rows(procSpell)[1].min == '#2722', 'without a lookup the spell id is s
 assert(fx.rows(procSpell, function() return nil end)[1].min == '#2722')
 assert(fx.format(rows[1]) == 'Weapon Proc Inferno Strike, proc rate +150%')
 
+-- A proc row also says what the fired spell does when the lookup gives a summary.
+rows = fx.rows(procSpell, function(id)
+  return id == 2722 and {name = 'Inferno Strike', summary = '45 fire damage'} or nil
+end)
+assert(rows[1].min == 'Inferno Strike: 45 fire damage')
+assert(fx.format(rows[1]) == 'Weapon Proc Inferno Strike: 45 fire damage, proc rate +150%')
+
+-- A one-line summary: direct damage with the resist type, otherwise the first one or two effect rows.
+local strike = {name = 'Prismatic Strike II', resist = 2, class_level = {20}, effects = {
+  {effect = 0, base = -45, base2 = 0, max = 0, formula = 100},
+}}
+assert(fx.summary(strike) == '45 fire damage')
+assert(fx.summary({class_level = {20}, resist = 0, effects = {
+  {effect = 0, base = -45, base2 = 0, max = 0, formula = 100},
+}}) == '45 damage', 'an unresistable spell has no resist name')
+assert(fx.summary({class_level = {20}, resist = 42, effects = {
+  {effect = 0, base = -45, base2 = 0, max = 0, formula = 100},
+}}) == '45 damage', 'an unknown resist has no name')
+assert(fx.summary({class_level = {20}, effects = {
+  {effect = 4, base = 15, base2 = 0, max = 0, formula = 100},
+  {effect = 2, base = 5, base2 = 0, max = 0, formula = 100},
+  {effect = 1, base = 25, base2 = 0, max = 0, formula = 100},
+}}) == 'Strength +15, Attack +5', 'no damage: the first two effect rows')
+assert(fx.summary({class_level = {20}, effects = {
+  {effect = 4, base = 15, base2 = 0, max = 0, formula = 100},
+}}) == 'Strength +15')
+assert(fx.summary(nil) == nil and fx.summary({}) == nil)
+assert(fx.summary({class_level = {20}, effects = {
+  {effect = 254, base = 0, base2 = 0, max = 0, formula = 100},
+}}) == nil, 'nothing to say')
+
+-- The trigger row shows the name and the summary; a plain string lookup keeps the old contract.
+local trigger = {class_level = {1}, effects = {
+  {effect = 339, base = 100, base2 = 25543, max = 0, formula = 100},
+}}
+rows = fx.rows(trigger, function(id)
+  return id == 25543 and {name = 'Prismatic Strike II', summary = fx.summary(strike)} or nil
+end)
+assert(rows[1].name == 'Trigger on Cast' and rows[1].min == '100%')
+assert(rows[1].note == 'Prismatic Strike II: 45 fire damage')
+assert(fx.format(rows[1]) == 'Trigger on Cast 100%, Prismatic Strike II: 45 fire damage')
+rows = fx.rows(trigger, function(id)
+  return id == 25543 and {name = 'Prismatic Strike II', summary = fx.summary({class_level = {20}, effects = {
+    {effect = 4, base = 15, base2 = 0, max = 0, formula = 100},
+  }})} or nil
+end)
+assert(rows[1].note == 'Prismatic Strike II: Strength +15', 'no damage: the first effect row')
+rows = fx.rows(trigger, function(id) return id == 25543 and 'Prismatic Strike II' or nil end)
+assert(rows[1].note == 'Prismatic Strike II', 'a plain string lookup keeps the old contract')
+rows = fx.rows(trigger, function() return nil end)
+assert(rows[1].note == '#25543', 'nothing found: the id')
+
+-- The Limit: Spell phrase uses the name only, never the summary.
+rows = fx.rows({class_level = {1}, effects = {
+  {effect = 139, base = 25543, base2 = 0, max = 0, formula = 100},
+}}, function(id)
+  return id == 25543 and {name = 'Prismatic Strike II', summary = '45 fire damage'} or nil
+end)
+assert(rows[1].is_limit and rows[1].min == 'spell Prismatic Strike II')
+
 -- Melee Mitigation is stored negative for an improvement and shown with the sign turned round.
 rows = fx.rows({class_level = {28}, effects = {
   {effect = 168, base = -10, base2 = 0, max = 0, formula = 100},
