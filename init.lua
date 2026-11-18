@@ -41,6 +41,17 @@ if hs.option then
   end
 end
 
+-- Read-only snapshot of the two additional-information switches for the spell and item displays.
+-- They read this once per frame so a per-id cache hit cannot keep showing details after a switch is
+-- turned off, and a result cached while a switch was off cannot outlive it being turned on.
+-- spell_view, item_info and item_spell_info keep their own guards; this only reports current values.
+hs.ui_function('display_options', function()
+  return {
+    spell_info = settings.get('spell_info') == true,
+    item_info = settings.get('item_info') == true,
+  }
+end)
+
 hs.ui_function('spell_info', function(id)
   if not settings.get('spell_info') then return nil end
   if not finite(id) or id <= 0 then return nil end
@@ -471,7 +482,6 @@ pcall(hs.menu, 'Pet chain', '/petchain')
 
 -- Called every UI frame; the module throttles itself to its tick rate. Nil while the option is off.
 hs.ui_function('petchain_tick', function()
-  if not settings.get('pet_chain') then return nil end
   pet.tick()
   return nil
 end)

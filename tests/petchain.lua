@@ -6,6 +6,7 @@ local now = 1000000
 local target = 0
 local zoneId = 66
 local dead = false
+local spawnCalls, settingsReads = 0, 0
 -- spawn proxies by id: {type=, hp=, mezzed=, surname=}
 local spawnDefs = {}
 local xtargets = {} -- 1-based {type=, spawn_id=, name=}
@@ -36,6 +37,7 @@ package.preload.mq = function()
       Me = { Dead = function() return dead end },
       Zone = { ID = function() return zoneId end },
       Spawn = function(sel)
+        spawnCalls = spawnCalls + 1
         local id = tonumber(sel:match('id (%d+)'))
         local def = id and spawnDefs[id]
         local function proxy()
@@ -59,6 +61,17 @@ package.preload.mq = function()
     },
   }
 end
+local settings = require('core.settings')
+local newSettings = settings.new
+settings.new = function(...)
+  local store = newSettings(...)
+  local get = store.get
+  store.get = function(name)
+    if name == 'pet_chain' then settingsReads = settingsReads + 1 end
+    return get(name)
+  end
+  return store
+end
 dofile('init.lua')
 
 -- the option, the command, the menu entry, the tick function, the packet hooks
@@ -78,6 +91,12 @@ spawnDefs[10] = { type = 'NPC', hp = 80, mezzed = nil, surname = '' }
 player.xtarget_slots = 1
 xtargets[1] = { type = 1, spawn_id = 10, name = 'a gnoll' }
 hs.xtarget = function(i) return xtargets[i] end
+
+-- Count the extended-target read: one scan means one hs.player() and one walk of every slot.
+local playerCalls, xtargetCalls = 0, 0
+local rawPlayer, rawXtarget = hs.player, hs.xtarget
+hs.player = function() playerCalls = playerCalls + 1; return rawPlayer() end
+hs.xtarget = function(i) xtargetCalls = xtargetCalls + 1; return rawXtarget(i) end
 
 local function tick(dt)
   now = now + (dt or 300) -- default one 250 ms+ tick
@@ -153,8 +172,12 @@ assert(#commands > before, 'the order goes out for the next mob')
 spawnDefs[21] = nil
 xtargets[2] = { type = 0, spawn_id = 0, name = '' }
 before = #commands
+playerCalls, xtargetCalls, spawnCalls = 0, 0, 0
 tick(300)
 assert(#commands == before, 'no order while the only mob left is skipped for a while')
+assert(playerCalls == 1, 'wait decision: one hs.player() scan, got ' .. playerCalls)
+assert(xtargetCalls == 2, 'wait decision: one walk of the two slots, got ' .. xtargetCalls)
+assert(spawnCalls == 2, 'wait decision: current plus one candidate, no duplicate filtering')
 tick(61000) -- the skip minute runs out
 assert(cmdfs[#cmdfs] == '/target id 20', 'after the minute the last mob is targeted again: ' .. tostring(cmdfs[#cmdfs]))
 
@@ -203,4 +226,154 @@ targetsBefore = #cmdfs
 tick(1)
 assert(#cmdfs == targetsBefore, 'death after back off does not restart the chain')
 
+-- Performance: a candidate round reads the extended targets once per tick, not once per candidate.
+local function stopChain()
+  packets[0x0159](0x0159, string.pack('<I4I4', 28, 0)) -- back off stops and clears any pending /target
+end
+local function startChain(id)
+  spawnDefs[id] = { type = 'NPC', hp = 100, surname = '' }
+  xtargets[1] = { type = 1, spawn_id = id }
+  player.xtarget_slots = 1
+  packets[0x0159](0x0159, string.pack('<I4I4', 2, id))
+  tick(300) -- current = id, watched, nothing sent
+end
+
+-- Three candidates, the middle one a hater: one scan, and the hater outranks earlier non-haters.
+stopChain()
+startChain(200)
+spawnDefs[200] = nil -- the current mob is gone, so this tick goes straight to a candidate round
+spawnDefs[201] = { type = 'NPC', hp = 100, surname = '' }
+spawnDefs[202] = { type = 'NPC', hp = 100, surname = '' }
+spawnDefs[203] = { type = 'NPC', hp = 100, surname = '' }
+xtargets[1] = { type = 0, spawn_id = 201 }
+xtargets[2] = { type = 1, spawn_id = 202 }
+xtargets[3] = { type = 0, spawn_id = 203 }
+player.xtarget_slots = 3
+playerCalls, xtargetCalls, spawnCalls = 0, 0, 0
+tick(300)
+assert(cmdfs[#cmdfs] == '/target id 202', 'a hater outranks earlier non-haters: ' .. tostring(cmdfs[#cmdfs]))
+assert(playerCalls == 1, 'candidate round: one hs.player() scan, got ' .. playerCalls)
+assert(xtargetCalls == 3, 'candidate round: one walk of the three slots, got ' .. xtargetCalls)
+assert(spawnCalls == 4, 'candidate round: current plus one Spawn lookup per candidate')
+
+-- A duplicate spawn id keeps its first slot's type: 210 is a non-hater in slot 2, a hater in slot 3, so the
+-- earlier non-hater 211 wins. Using the later slot's type would pick 210 instead.
+stopChain()
+startChain(212)
+spawnDefs[212] = nil
+spawnDefs[210] = { type = 'NPC', hp = 100, surname = '' }
+spawnDefs[211] = { type = 'NPC', hp = 100, surname = '' }
+xtargets[1] = { type = 0, spawn_id = 211 }
+xtargets[2] = { type = 0, spawn_id = 210 }
+xtargets[3] = { type = 1, spawn_id = 210 }
+player.xtarget_slots = 3
+tick(300)
+assert(cmdfs[#cmdfs] == '/target id 211', 'duplicate spawn id uses its first slot type: ' .. tostring(cmdfs[#cmdfs]))
+
+-- Ordinary health watches retain early exit, including a match beyond slot one.
+stopChain()
+startChain(220)
+spawnDefs[221] = {type = 'NPC', hp = 100, surname = ''}
+xtargets[2] = {type = 1, spawn_id = 221}
+xtargets[3] = {type = 0, spawn_id = 0}
+player.xtarget_slots = 3
+playerCalls, xtargetCalls, settingsReads = 0, 0, 0
+tick(300)
+assert(playerCalls == 1 and xtargetCalls == 1, 'health watch stops at the first slot')
+assert(settingsReads == 1, 'one protected settings read per active frame')
+xtargets[1], xtargets[2] = xtargets[2], xtargets[1]
+playerCalls, xtargetCalls = 0, 0
+spawnDefs[220].hp = 90
+tick(300)
+assert(playerCalls == 1 and xtargetCalls == 2, 'falling health: stop at slot two, do not scan slot three')
+before = #cmdfs
+tick(14750)
+assert(#cmdfs == before, 'health drop restarts the 15-second stall clock')
+tick(250)
+assert(#cmdfs == before + 1, 'stall retries at 15 seconds on a regular tick')
+
+-- Pending frames do not scan slots; confirmation bypasses the normal 250 ms throttle.
+playerCalls, xtargetCalls = 0, 0
+target = 0
+before = #cmdfs
+tick(600)
+assert(#cmdfs == before, 'target timeout is strictly greater than 600 ms')
+assert(playerCalls == 0 and xtargetCalls == 0, 'pending wait has no slot scan')
+tick(1)
+assert(#cmdfs == before + 1, 'target is retried after 600 ms')
+playerCalls, xtargetCalls = 0, 0
+target = 220
+ordersBefore = #commands
+tick(1)
+assert(#commands == ordersBefore + 1, 'pending confirmation is checked next frame')
+assert(playerCalls == 0 and xtargetCalls == 0, 'target confirmation has no slot scan')
+
+-- Failed targets are skipped only after three timeouts, and never when the failed mob is last.
+stopChain()
+startChain(240)
+target = 0
+tick(15000)
+local retryAt = now -- send_pets retry starts the existing health-watch stall clock
+tick(601)
+tick(601)
+before = #cmdfs
+tick(601)
+assert(#cmdfs == before + 1 and cmdfs[#cmdfs] == '/target id 240', 'last failed target is retried, not ignored')
+spawnDefs[241] = {type = 'NPC', hp = 100, surname = ''}
+xtargets[2] = {type = 1, spawn_id = 241}
+player.xtarget_slots = 2
+local chatsBefore = #chats
+before, ordersBefore = #cmdfs, #commands
+tick(601)
+assert(#chats == chatsBefore + 1 and chats[#chats]:find('could not target mob 240', 1, true),
+  'failed target is skipped when another remains')
+assert(#cmdfs == before and #commands == ordersBefore, 'skip clears the pending target without retrying or ordering')
+-- 240 is still alive and listed: the unchanged health watch waits out its 15 s clock, even after the skip.
+tick(300)
+assert(#cmdfs == before and #commands == ordersBefore, 'failed-target skip does not bypass the health watch')
+tick(15000 - (now - retryAt) - 250)
+assert(#cmdfs == before and #commands == ordersBefore, 'health watch still waits at 14750 ms since retry')
+tick(250)
+assert(#cmdfs == before + 1 and cmdfs[#cmdfs] == '/target id 241',
+  'selection continues after the failed-target skip at the existing 15-second stall')
+target = 241
+tick(1)
+assert(#commands == ordersBefore + 1 and commands[#commands] == '/pet attack',
+  'the next confirmed target gets the pet order after the failed-target skip')
+
+-- Idle skips the guard AND settings; active failures (including settings) are still reported and stopped.
+stopChain()
+settingsReads, playerCalls, xtargetCalls = 0, 0, 0
+tick(300)
+assert(settingsReads == 0 and playerCalls == 0 and xtargetCalls == 0, 'idle has no settings/client reads')
+startChain(230)
+local readPlayer = hs.player
+hs.player = function() error('slot read failed') end
+tick(300)
+assert(chats[#chats]:find('slot read failed', 1, true), 'active client errors are reported')
+hs.player = readPlayer
+before = #cmdfs
+tick(16000)
+assert(#cmdfs == before, 'an active error stops the chain')
+
+local failEnabled, enabledCalls = false, 0
+local guarded = require('core.petchain').attach(require('mq'), hs, {
+  enabled = function()
+    enabledCalls = enabledCalls + 1
+    if failEnabled then error('settings read failed') end
+    return true
+  end,
+  say = function(text) chats[#chats + 1] = text end,
+})
+guarded.tick()
+assert(enabledCalls == 0, 'idle does not read enabled')
+packets[0x0159](0x0159, string.pack('<I4I4', 2, 230))
+failEnabled, enabledCalls = true, 0
+guarded.tick()
+assert(enabledCalls == 1 and chats[#chats]:find('settings read failed', 1, true),
+  'active settings error is inside pcall, read once')
+guarded.tick()
+assert(enabledCalls == 1, 'settings error stopped the chain')
+
+print('measured player/xtarget/Spawn: candidates 1/3/4; ignored wait 1/2/2; health player/xtarget 1/1, 1/2; pending 0/0')
 print('petchain ok')

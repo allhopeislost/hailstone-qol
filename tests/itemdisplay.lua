@@ -9,6 +9,7 @@ local now, width, invisibleClick, hovered, checkboxClick, tierClick = 10, 380, f
 local pluginAvailable, requestImpl = true, nil
 local versionsAvailable = true
 local spellInfoImpl, spellInfoCalls = nil, 0
+local frameCount, itemInfoOn = 0, true
 
 local color = {1, 1, 1, 1}
 local T = {
@@ -79,6 +80,7 @@ eq = {
     assert(name == 'script:qol')
     if not pluginAvailable then return nil end
     local plugin = {
+      display_options = function() return {item_info = itemInfoOn, spell_info = false} end,
       item_info = function(record)
         infoRecords[record.id] = record
         infoCalls = infoCalls + 1
@@ -100,6 +102,7 @@ eq = {
   end,
 }
 ui = {
+  GetFrameCount = function() return frameCount end,
   window = function(name, fn) windows[name] = fn end,
   GetTime = function() return now end,
   GetCursorScreenPos = function() return 0, 0 end,
@@ -189,6 +192,7 @@ local function load()
 end
 
 local function frame(name)
+  frameCount = frameCount + 1
   buttons, texts, wrapped, colored, headings, tooltips, clicks = {}, {}, {}, {}, {}, {}, {}
   stmlLinks, drawLinks, stmlRaws, dataReads = {}, {}, {}, {}
   windows[name or 'Item Display']()
@@ -484,5 +488,29 @@ load()
 item(1, 51907, 'No function', 'desc')
 frame()
 assert(not has(headings, 'Spell info'))
+
+-- Both item caches follow item_info alone, even though the fixture's spell_info is false.
+load()
+spellInfoImpl = function(record)
+  return {id = record.id, name = 'Live effect', metadata = '', effects = {}}
+end
+item(1, 901, 'Live item', 'Base description')
+frame()
+assert(infoCalls == 1 and spellInfoCalls == 1 and has(headings, 'Spell info'))
+itemInfoOn = false
+frame()
+assert(infoCalls == 1 and spellInfoCalls == 1, 'off does not access warm caches')
+assert(not has(headings, 'Additional information') and not has(headings, 'Spell info'))
+assert(has(colored, 'Live item') and #drawLinks > 0, 'base UI and cached description remain')
+itemInfoOn = true
+frame()
+assert(infoCalls == 1 and spellInfoCalls == 1 and has(headings, 'Spell info'), 'warm cache restored')
+itemInfoOn = false
+item(1, 902, 'Cold item', 'Base description')
+frame()
+assert(infoCalls == 1 and spellInfoCalls == 1, 'off does not populate cold caches')
+itemInfoOn = true
+frame()
+assert(infoCalls == 2 and spellInfoCalls == 2 and has(headings, 'Spell info'), 'cold id loads after enabling')
 
 print('item display custom client contract: ok')

@@ -446,12 +446,29 @@ local function versionControls(win, sourceId, plugin, s, width)
   ui.PopFont()
 end
 
+-- The item-information switch lives in the plugin's persisted settings (qol.lua), not in ui.GetSetting.
+-- All six windows share one read per frame. Checking it before the per-id caches are touched keeps a
+-- cached result hidden while the option is off, and keeps an item first seen while it was off from being
+-- frozen as "no data" when it is turned on. item_spell_info is gated by this same switch, not spell_info.
+local optionFrame, itemInfoOn = -1, false
+local function itemInfoEnabled(plugin)
+  local frame = ui.GetFrameCount()
+  if frame ~= optionFrame then
+    optionFrame = frame
+    local fn = plugin and plugin.display_options
+    local ok, opts = false, nil
+    if type(fn) == 'function' then ok, opts = pcall(fn) end
+    itemInfoOn = ok and type(opts) == 'table' and opts.item_info == true
+  end
+  return itemInfoOn
+end
+
 -- The game's English info string depends only on the item's id, so build it once per id rather than every
 -- frame. A sentinel records a nil result so an unchanged id is not re-fetched when the plugin has no text.
 local INFO_NIL = {}
 local infoCache = {}
-local function itemInfo(plugin, data)
-  if not plugin or not data then return nil end
+local function itemInfo(plugin, data, enabled)
+  if not enabled or not plugin or not data then return nil end
   local id = data.id
   if id == nil then return plugin.item_info(data) end
   local cached = infoCache[id]
@@ -467,7 +484,8 @@ end
 -- plugin call is cached per item id like itemInfo (a nil result too), the prepared effects and metadata per spell
 -- id; the per-frame drawing consumes a copy of the fields. No plugin, no function or nil: no section.
 local spellByItem, spellPrepared = {}, {}
-local function itemSpell(plugin, data)
+local function itemSpell(plugin, data, enabled)
+  if not enabled then return nil end
   local fn = plugin and plugin.item_spell_info
   if type(fn) ~= "function" or type(data) ~= "table" then return nil end
   local key = data.id
@@ -520,6 +538,7 @@ local function body(win, w, h, s)
   local instance = tonumber(win:match("#(%d+)$")) or 1
   local plugin = eq.Plugin("script:qol")
   local data = eq.DisplayItemData and eq.DisplayItemData(instance)
+  local detailsOn = itemInfoEnabled(plugin)
 
   local tex, u0, v0, u1, v1 = eq.ChildArt(win, "IconButton", "decal")
   local mod = trim(W.Text(win, "IDW_ModButtonLabel"))
@@ -603,14 +622,14 @@ local function body(win, w, h, s)
     description(win, descRaw, cw)
     ui.PopFont()
   end
-  local extra = itemInfo(plugin, data)
+  local extra = itemInfo(plugin, data, detailsOn)
   if extra then
     W.Heading("Additional information")
     ui.PushFont(T.font.small)
     ui.TextWrapped(extra)
     ui.PopFont()
   end
-  local spell = itemSpell(plugin, data)
+  local spell = itemSpell(plugin, data, detailsOn)
   if spell then spellSection(spell, s, cw) end
   if type(data) == "table" then versionControls(win, data.id, plugin, s, cw) end
   ui.Dummy(0, 4 * s)

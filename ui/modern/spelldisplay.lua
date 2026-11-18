@@ -43,6 +43,23 @@ local function prepareSpell(id, plugin)
   }
 end
 
+-- The spell-information switch lives in the plugin's persisted settings (qol.lua), not in ui.GetSetting.
+-- All six windows share one read per frame. Checking it before the per-id cache is touched keeps cached
+-- details hidden while the option is off, and lets an id first seen while it was off be prepared as soon
+-- as it is on. The plugin's own spell_view guard stays in place.
+local optionFrame, spellInfoOn = -1, false
+local function spellInfoEnabled(plugin)
+  local frame = ui.GetFrameCount()
+  if frame ~= optionFrame then
+    optionFrame = frame
+    local fn = plugin and plugin.display_options
+    local ok, opts = false, nil
+    if type(fn) == 'function' then ok, opts = pcall(fn) end
+    spellInfoOn = ok and type(opts) == 'table' and opts.spell_info == true
+  end
+  return spellInfoOn
+end
+
 -- testing (test.open.SpellDisplayWindow=1): the first gem's spell, else Complete Heal
 local function testOpen()
   local st = eq.SpellBookState()
@@ -76,11 +93,15 @@ for i = 1, INSTANCES do
     ui.SetCursorScreenPos(x, ly + 6 * s)
     ui.PushFont(T.font.small)
     local plugin = eq.Plugin("script:qol")
+    local detailsOn = spellInfoEnabled(plugin)
     local id = eq.DisplaySpellId and eq.DisplaySpellId(i)
-    local entry = id and spellCache[id]
-    if id and not entry then
-      entry = prepareSpell(id, plugin)
-      if entry then spellCache[id] = entry end
+    local entry
+    if id and detailsOn then
+      entry = spellCache[id]
+      if not entry then
+        entry = prepareSpell(id, plugin)
+        if entry then spellCache[id] = entry end
+      end
     end
     local details = entry and entry.details
     ui.BeginChild("##qolspell", 0, math.max(1, y + h - ly - 6 * s), false)

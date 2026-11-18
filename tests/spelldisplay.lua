@@ -2,6 +2,7 @@ local realDofile = dofile
 local displayed, extras, ids, children = {}, {}, {}, {}
 local lines, rects, spellViewCalls = 0, 0, 0
 local enabled, pluginAvailable, currentId = true, true, 701
+local frame, optionReads = 0, 0
 local colors = {text = {1, 1, 1, 1}, muted = {.5, .5, .5, 1}, ink = {0, 0, 0, 1}}
 local drawn, inline, cyan = {}, {}, {}
 local T = {
@@ -19,6 +20,7 @@ local stml = {
 }
 local windows = {}
 ui = {
+  GetFrameCount = function() return frame end,
   window = function(name, fn) windows[name] = fn end,
   DrawLine = function() lines = lines + 1 end, DrawRectFilled = function() rects = rects + 1 end,
   SetCursorScreenPos = function() end,
@@ -43,7 +45,10 @@ eq = {
   Plugin = function(name)
     assert(name == 'script:qol')
     if not pluginAvailable then return nil end
-    return {spell_view = function(id)
+    return {display_options = function()
+      optionReads = optionReads + 1
+      return {spell_info = enabled, item_info = true}
+    end, spell_view = function(id)
       spellViewCalls = spellViewCalls + 1
       assert(id == currentId)
       if enabled then return {metadata = 'Spell ID: ' .. id .. '\nMana: 40\nClasses: BST 11\nDamage per mana: 1.17\nCast: 6.50s\nRecovery: 1.50s\nRecast: 1.50s',
@@ -71,6 +76,7 @@ for i = 1, 6 do
   assert(extras[i] == 'Spell ID: ' .. currentId)
   assert(children[i][1] == '##qolspell' and children[i][3] == 246)
 end
+assert(optionReads == 1, 'all six spell windows share one option read in a frame')
 assert(table.concat(drawn, '|'):find('+20 (L11)', 1, true))
 assert(table.concat(drawn, '|'):find('+45 (L60)', 1, true))
 assert(table.concat(drawn, '|'):find('1H Blunt', 1, true))
@@ -94,6 +100,7 @@ assert(not table.concat(inline, '|'):find('Classes: BST 11    Damage per mana', 
 assert(not table.concat(drawn, '|'):find('→', 1, true))
 assert(rects == 6 and lines >= 24) -- each panel and each geometric arrow
 local function unchanged()
+  frame = frame + 1
   windows['Spell Display']()
   assert(#extras == 6)
   assert(children[#children][3] == 246)
@@ -114,6 +121,7 @@ pluginAvailable = true
 eq.DisplaySpellId = function(instance) ids[#ids + 1] = instance return currentId end
 currentId, enabled = 801, true
 local function spellText()
+  frame = frame + 1
   local from = #extras
   windows['Spell Display']()
   return table.concat(extras, '|', from + 1)
@@ -130,4 +138,13 @@ assert(spellViewCalls == calls + 1) -- the new id is prepared once
 calls = spellViewCalls
 assert(spellText():find('Spell ID: 802', 1, true))
 assert(spellViewCalls == calls) -- reused again
+-- Live switches gate both warm and cold caches; switching on restores the same id.
+enabled = false
+assert(spellText() == '' and spellViewCalls == calls)
+enabled = true
+assert(spellText():find('Spell ID: 802', 1, true) and spellViewCalls == calls)
+enabled, currentId = false, 803
+assert(spellText() == '' and spellViewCalls == calls)
+enabled = true
+assert(spellText():find('Spell ID: 803', 1, true) and spellViewCalls == calls + 1)
 print('spell display custom client contract: ok')

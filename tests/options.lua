@@ -60,6 +60,22 @@ assert(options.target_level.get() == 1 and options.spell_info.get() == 1)
 assert(functions.target_name and functions.spell_info and functions.item_info)
 assert(functions.spell_view)
 
+-- The spell and item displays read one read-only snapshot per frame, so a per-id cache hit cannot
+-- outlive a switch. The snapshot must track both switches and never write back to the settings.
+assert(type(functions.display_options) == 'function')
+local snap = functions.display_options()
+assert(snap.spell_info == true and snap.item_info == true)
+options.spell_info.set(0)
+snap = functions.display_options()
+assert(snap.spell_info == false and snap.item_info == true)
+options.spell_info.set(1)
+options.item_info.set(0)
+snap = functions.display_options()
+assert(snap.spell_info == true and snap.item_info == false)
+options.item_info.set(1)
+snap.item_info = false -- a copy, not a live reference into the settings
+assert(functions.display_options().item_info == true)
+
 options.target_level.set(0)
 spawn = {npc = true, level = 12}
 assert(functions.target_name('a rat') == 'a rat')
@@ -138,6 +154,11 @@ assert(functions.item_spell_info({wornSpell = 43}) == nil, 'no spell record')
 options.item_info.set(0)
 assert(functions.item_spell_info({focusSpell = 40}) == nil, 'option off')
 options.item_info.set(1)
+-- The item display's spell section follows item_info only; spell_info is not part of that combination.
+options.spell_info.set(0)
+assert(functions.item_spell_info({focusSpell = 40}) ~= nil, 'item spell ignores spell_info')
+assert(functions.spell_info(7) == nil and functions.spell_view(7) == nil, 'standalone spell APIs stay disabled')
+options.spell_info.set(1)
 
 -- The experimental tier preview is opt-in: off by default, refused while
 -- off, available once enabled.

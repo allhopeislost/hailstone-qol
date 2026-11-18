@@ -543,3 +543,28 @@ Decision: the spell-ID fields are `focusSpell`, `procSpell`, `wornSpell`, `click
 the first positive integer id wins and `0` or `-1` means "no spell". This supersedes D042's snake_case names because
 the merged client (PR #101, commit 66758e7) exposes them in camelCase.
 Why: the client renamed the new fields to camelCase to match the rest of the record before merging to main.
+
+## D052 Display caches honour live information options
+Status: Accepted
+Recorded: 2026-11-18
+Clarifies: D004, D040, D042
+Decision: spell and item displays read the read-only `display_options()` plugin snapshot once per frame per
+display script, before cache access. Disabled details are hidden even on cache hits; IDs first seen while off
+are not cached as missing data. The base window and description remain visible. Standalone spell APIs follow
+`spell_info`; an item's extra text and spell section follow only `item_info`.
+Why: immutable per-ID data may be cached, but an option is live state and must not be frozen with that data.
+
+## D053 Pet chain keeps cheap health watches and one candidate scan
+Status: Accepted
+Recorded: 2026-11-18
+Clarifies: D037, D039, D040
+Decision: ordinary health watches use an early-exit membership lookup with one player read and no snapshot.
+Selection uses one slot scan, retaining the first duplicate slot's hater type and filtering each distinct ID
+once; the same result decides whether to wait for ignored mobs or stop. Last-mob safety checks stop at the
+first other eligible mob, independent of ignores. Rare stall/skip transitions can perform separate membership,
+safety and selection scans; there is no promise of one scan for every possible tick.
+Idle ticks skip both settings and pcall. Active ticks read the option once inside pcall, including through
+the UI bridge, so settings/client errors still report and stop the chain. Target wait, health stall, ignore
+expiry and deferred death handling keep their existing timing.
+Why: a full snapshot per health watch trades fewer candidate-round client calls for unnecessary common-path
+allocations and slot reads. Separate small lookups keep the usual health-watch and pending paths cheap.

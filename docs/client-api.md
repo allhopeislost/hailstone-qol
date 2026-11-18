@@ -50,6 +50,16 @@ the mouse goes **up**, while `ui.IsMouseDoubleClicked` is true on the frame it g
 never shares a frame with the hit box's click; ask for it on its own, on the hovered item (`ui.IsItemHovered()`), as
 the client's own list windows do (`ui/modern/spellbook.lua`, `abilitybook.lua`). FindWalk's rows do this.
 
+### Display option bridge (add-on API)
+
+`eq.Plugin('script:qol').display_options()` is registered through `hs.ui_function` by this add-on, not a new
+client binding. It returns a fresh `{spell_info = boolean, item_info = boolean}` snapshot of the persisted
+options, with no writes or spell/item reads. Mutating the returned table cannot change settings.
+Each display script reads it at most once per rendered frame (`ui.GetFrameCount`), shared by its six windows,
+before accessing per-ID caches. Missing, failing or malformed results hide additional details, not the base UI.
+`spell_info` and `spell_view` follow `spell_info`; `item_info` and `item_spell_info` follow only `item_info`.
+The custom `eq.DisplaySpellId(instance)` / `eq.DisplayItemData(instance)` routes remain unchanged.
+
 ## `hs.spell(id)` fields
 
 The reference source returns only: `id`, `name`, `class_level`, `timer_id`, `cast_time`, `recovery_time`,

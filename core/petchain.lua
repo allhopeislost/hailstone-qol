@@ -65,8 +65,10 @@ function M.attach(mq, hs, opts)
     return tonumber(mq.TLO.Target.ID()) or 0
   end
 
+  -- The usual health watch only needs membership: stop at the first match, without a snapshot.
   local function on_list(id)
-    local slots = tonumber(hs.player() and hs.player().xtarget_slots) or 0
+    local player = hs.player()
+    local slots = tonumber(player and player.xtarget_slots) or 0
     for i = 1, slots do
       local x = hs.xtarget(i)
       if x and x.spawn_id == id then return true end
@@ -86,43 +88,36 @@ function M.attach(mq, hs, opts)
     tries = {}
   end
 
-  -- The next mob: a living NPC in an extended target slot, not a pet, not mezzed, not on the ignore list. The first
-  -- in slot order, but one that is on me comes before one that is not (slot type 1 = auto hater).
-  -- every living, non-pet, non-mezzed mob on the extended target list, the ignore list not applied,
-  -- optionally except one id (the current one)
-  local function list_mobs(except)
-    local out = {}
-    local slots = tonumber(hs.player() and hs.player().xtarget_slots) or 0
+  local function eligible(id)
+    local sp = mq.TLO.Spawn('id ' .. id)
+    return sp() and sp.Type() == 'NPC' and (tonumber(sp.PctHPs()) or 0) > 0
+      and not is_pet(sp) and sp.Mezzed() == nil
+  end
+
+  -- One candidate scan also answers "wait or stop", without filtering the same mobs again.
+  -- presenceOnly is the last-mob safety check: ignore the skip list and stop at the first eligible mob.
+  -- Otherwise remember the FIRST slot's type for duplicates (false is a recorded non-hater).
+  local function next_mob(except, presenceOnly)
+    local player = hs.player()
+    local slots = tonumber(player and player.xtarget_slots) or 0
+    local firstHater = not presenceOnly and {} or nil
+    local best, best_hater, any
     for i = 1, slots do
       local x = hs.xtarget(i)
       local id = x and x.spawn_id or 0
-      if id ~= 0 and id ~= except then
-        local sp = mq.TLO.Spawn('id ' .. id)
-        if sp() and alive(id) and not is_pet(sp) and sp.Mezzed() == nil then
-          out[#out + 1] = id
+      if id ~= 0 and id ~= except and (presenceOnly or firstHater[id] == nil) then
+        local hater = x.type == 1
+        if firstHater then firstHater[id] = hater end
+        if eligible(id) then
+          if presenceOnly then return id, true end
+          any = true
+          if (ignore[id] or 0) < now() and (not best or (hater and not best_hater)) then
+            best, best_hater = id, hater
+          end
         end
       end
     end
-    return out
-  end
-
-  local function next_mob()
-    local best, best_hater
-    for _, id in ipairs(list_mobs(current)) do
-      if (ignore[id] or 0) < now() then
-        -- slot type 1 = auto hater: one that is on me comes before one that is not
-        local slots = tonumber(hs.player() and hs.player().xtarget_slots) or 0
-        local hater = false
-        for i = 1, slots do
-          local x = hs.xtarget(i)
-          if x and x.spawn_id == id then hater = x.type == 1 break end
-        end
-        if not best or (hater and not best_hater) then
-          best, best_hater = id, hater
-        end
-      end
-    end
-    return best
+    return best, any
   end
 
   local function try(id)
@@ -148,7 +143,7 @@ function M.attach(mq, hs, opts)
   end
 
   local function tick()
-    if not enabled() or not chaining then return end
+    if not enabled() then return end
     local t = now()
     if not currentDead and not pending and t - lastTick < TICK_MS then return end
     lastTick = t
@@ -180,7 +175,7 @@ function M.attach(mq, hs, opts)
       elseif now() - p.since > TARGET_WAIT_MS then
         pending = nil
         -- a mob we cannot target is skipped for a minute, but never when it is the last one left
-        if try(p.id) >= MAX_TRIES and #list_mobs(p.id) > 0 then
+        if try(p.id) >= MAX_TRIES and next_mob(p.id, true) then
           ignore[p.id] = now() + BLACKLIST_MS
           say('could not target mob ' .. p.id .. ', skipped for a minute.')
         else
@@ -202,7 +197,7 @@ function M.attach(mq, hs, opts)
         local full = hp >= 100
         -- at full health after MAX_TRIES orders the mob is skipped for a minute, but never when it is
         -- the last one on the list: then the order just goes out again
-        if full and (tries[current] and tries[current].n or 0) >= MAX_TRIES and #list_mobs(current) > 0 then
+        if full and (tries[current] and tries[current].n or 0) >= MAX_TRIES and next_mob(current, true) then
           ignore[current] = now() + BLACKLIST_MS
           say('the pets do not reach mob ' .. current .. ', skipped for a minute.')
         else
@@ -213,11 +208,11 @@ function M.attach(mq, hs, opts)
       end
     end
 
-    local id = next_mob()
+    local id, any = next_mob(current)
     if id then currentDead = false; send_pets(id, false); return end
     -- nothing eligible right now: if mobs are still on the list (all skipped for a while), wait for the
     -- ignore list to run out instead of stopping; only when the list is really empty is the chain done
-    if #list_mobs(current) > 0 then return end
+    if any then return end
     return stop()
   end
 
@@ -312,8 +307,9 @@ function M.attach(mq, hs, opts)
     say('pet chain is ' .. (enabled() and 'on' or 'off') .. ' (Options -> Plugins). It starts with your next pet attack.')
   end
 
-  -- one error in a tick must not stall the chain silently: report it and stop, as the standalone script did
+  -- Idle needs no protected call or settings read. Active settings and client reads stay inside the guard.
   local function tickSafe()
+    if not chaining then return end
     local ok, err = pcall(tick)
     if not ok then stop('error: ' .. tostring(err)) end
   end
