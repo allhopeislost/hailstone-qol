@@ -65,13 +65,14 @@ probably not provided. To check: run a script that prints every key of `hs.spell
 
 ## Item record (`eq.DisplayItemData`)
 
-Read: `id`, `name`, `req_level`, `stack`, `charges`, `bag_slots`, `weight`, `ac`, `hp`, `mana`, `click_spell`,
-`scroll_spell`, `value`, `favor`, `damage`, `delay`, `lore`, `magic`. Custom; **unverified field by field**
+Read: `id`, `name`, `req_level`, `stack`, `charges`, `bag_slots`, `weight`, `ac`, `hp`, `mana`, `clickSpell`,
+`scrollSpell`, `value`, `favor`, `damage`, `delay`, `lore`, `magic`. Custom; **unverified field by field**
 (the item window works ingame).
 
-Also read, by the `item_spell_info(item)` plugin function: `focus_spell`, `proc_spell`, `worn_spell` (spell ids,
-next to `click_spell` and `scroll_spell`). Custom, being added to the custom client; **unverified field by field**.
-Missing or non-positive values mean "no such spell".
+Also read, by the `item_spell_info(item)` plugin function: `focusSpell`, `procSpell`, `wornSpell` (spell ids,
+next to `clickSpell` and `scrollSpell`). These five spell-id fields were added to the custom client by PR #101
+(commit 66758e7), now merged to main, and use camelCase like the rest of the record. A missing effect returns `0`
+or `-1`, which counts as "no spell".
 
 ## Spawn fields
 

@@ -116,8 +116,8 @@ end
 -- click, scroll. Returns (id, kind) for the first positive, finite integer id, or nil. Only the
 -- record's own id fields are read; nothing is looked up by name.
 M.item_spell_fields = {
-  {'focus_spell', 'Focus'}, {'proc_spell', 'Proc'}, {'worn_spell', 'Worn'},
-  {'click_spell', 'Click'}, {'scroll_spell', 'Scroll'},
+  {'focusSpell', 'Focus'}, {'procSpell', 'Proc'}, {'wornSpell', 'Worn'},
+  {'clickSpell', 'Click'}, {'scrollSpell', 'Scroll'},
 }
 
 function M.item_spell(item)
@@ -141,8 +141,8 @@ function M.item(item)
   append(lines, 'AC: ', number(item.ac))
   append(lines, 'HP: ', number(item.hp))
   append(lines, 'Mana: ', number(item.mana))
-  append(lines, 'Click spell ID: ', number(item.click_spell))
-  append(lines, 'Scroll spell ID: ', number(item.scroll_spell))
+  append(lines, 'Click spell ID: ', number(item.clickSpell))
+  append(lines, 'Scroll spell ID: ', number(item.scrollSpell))
   local value, favor = number(item.value), number(item.favor)
   if value and value > 0 then append(lines, 'Base value: ', value .. ' copper') end
   if favor and favor > 0 then append(lines, 'Tribute value: ', favor) end

@@ -37,7 +37,7 @@ assert(text:find('Stack: 2', 1, true))
 assert(text:find('AC: 3', 1, true))
 assert(text:find('Magic', 1, true))
 
-local hailstoneItem = {id = 11, icon = 4, item_class = 3, req_level = 20, stack = 1, click_spell = 99}
+local hailstoneItem = {id = 11, icon = 4, item_class = 3, req_level = 20, stack = 1, clickSpell = 99}
 text = info.item(hailstoneItem)
 assert(text:find('Required level: 20', 1, true))
 assert(text:find('Click spell ID: 99', 1, true))
@@ -114,19 +114,19 @@ assert(info.spell({id = math.huge, mana = 0/0, range = 'bad', resist_adj = math.
 assert(info.item({value = math.huge, favor = 'bad', damage = false, lore = {}}) == nil)
 
 -- The spell an item carries: focus, proc, worn, click, scroll; the first positive integer id wins.
-local id, kind = info.item_spell({focus_spell = 1, proc_spell = 2, worn_spell = 3, click_spell = 4,
-  scroll_spell = 5})
+local id, kind = info.item_spell({focusSpell = 1, procSpell = 2, wornSpell = 3, clickSpell = 4,
+  scrollSpell = 5})
 assert(id == 1 and kind == 'Focus')
-id, kind = info.item_spell({proc_spell = 2, worn_spell = 3, click_spell = 4})
+id, kind = info.item_spell({procSpell = 2, wornSpell = 3, clickSpell = 4})
 assert(id == 2 and kind == 'Proc')
-id, kind = info.item_spell({focus_spell = 0, proc_spell = -1, worn_spell = 3, click_spell = 4})
+id, kind = info.item_spell({focusSpell = 0, procSpell = -1, wornSpell = 3, clickSpell = 4})
 assert(id == 3 and kind == 'Worn')
-id, kind = info.item_spell({focus_spell = math.huge, proc_spell = 0/0, worn_spell = '3',
-  click_spell = 4, scroll_spell = 5})
+id, kind = info.item_spell({focusSpell = math.huge, procSpell = 0/0, wornSpell = '3',
+  clickSpell = 4, scrollSpell = 5})
 assert(id == 4 and kind == 'Click')
-id, kind = info.item_spell({click_spell = 1.5, scroll_spell = 5})
+id, kind = info.item_spell({clickSpell = 1.5, scrollSpell = 5})
 assert(id == 5 and kind == 'Scroll')
-for _, bad in ipairs({nil, false, 'x', 42, {}, {id = 9, focus_spell = 0, click_spell = -4}}) do
+for _, bad in ipairs({nil, false, 'x', 42, {}, {id = 9, focusSpell = 0, clickSpell = -4}}) do
   assert(info.item_spell(bad) == nil)
 end
 

@@ -534,3 +534,12 @@ value, `(per target)` suffix and omission rules are unchanged.
 Why: the number is one of the spell's own figures, so it belongs with the timing and range lines rather than in the
 header; the cyan block already groups exactly those numbers.
 Rules out: a new option, file or switch; changing the value or its label; drawing it twice.
+
+## D051 Item spell-id fields use camelCase
+Status: Accepted
+Recorded: 2026-11-18
+Supersedes: D042 (only the spell-id field names)
+Decision: the spell-ID fields are `focusSpell`, `procSpell`, `wornSpell`, `clickSpell`, `scrollSpell`, in that order;
+the first positive integer id wins and `0` or `-1` means "no spell". This supersedes D042's snake_case names because
+the merged client (PR #101, commit 66758e7) exposes them in camelCase.
+Why: the client renamed the new fields to camelCase to match the rest of the record before merging to main.
