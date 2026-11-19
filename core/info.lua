@@ -63,8 +63,8 @@ local function spell_header_lines(s)
 
   local levels = {}
   if type(s.class_level) == 'table' then
-    for i, level in ipairs(s.class_level) do
-      level = number(level)
+    for i, raw_level in ipairs(s.class_level) do
+      local level = number(raw_level)
       if M.classes[i] and level and level > 0 and level < 255 then
         levels[#levels + 1] = M.classes[i] .. ' ' .. level
       end
