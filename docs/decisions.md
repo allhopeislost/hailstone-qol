@@ -568,3 +568,28 @@ the UI bridge, so settings/client errors still report and stop the chain. Target
 expiry and deferred death handling keep their existing timing.
 Why: a full snapshot per health watch trades fewer candidate-round client calls for unnecessary common-path
 allocations and slot reads. Separate small lookups keep the usual health-watch and pending paths cheap.
+
+## D054 The target line wraps the pack's hs.UI map calls
+Status: Accepted
+Recorded: 2026-11-20
+Clarifies: D018, D020
+Decision: the map and minimap adapters wrap `hs.UI.map.DrawZone` and `hs.UI.map.DrawMinimap` in the add-on's own
+environment, and keep wrapping the flat `eq.DrawZoneMap` / `eq.DrawMinimap` names for older files. All other fields
+and functions pass through unchanged; the shared API is never written.
+Why: the Modern pack's map draws through its `hs.UI` facade now. That facade captured the client function when the UI
+started, so shadowing the flat `eq` name no longer intercepted it and the line silently disappeared.
+Rules out: Patching the shared `hs.UI` table; copying the pack's map windows.
+
+## D055 The map adapters replace their hook when a file reloads
+Status: Accepted
+Recorded: 2026-11-20
+Clarifies: D054
+Decision: the map and minimap adapters keep the client's own views, the client functions and the shadow tables in one
+table in the plugin's globals (`qol_map_hooks`). Loading either file captures the client functions once and installs
+its hook in the existing shadow; a failed pack load clears that adapter's hook instead of restoring a previous shadow.
+Why: the host keeps a plugin folder's globals across a hot reload of one of its files (`lua_host.cpp`). The first
+version read the draw function from the current `eq`/`hs`, which on a reload was its own wrapper: each reload added a
+layer and drew the line twice, and a failed load put the stale wrapper back. D054's shadows carry no marker, so
+updating a live session from D054 still wraps one stale layer: restart the plugin (`/lua stop qol`, `/lua run qol`),
+which the local test steps do anyway.
+Rules out: Reading `eq`/`hs` at the top of the file as the client's views; wrapping whatever the globals hold.

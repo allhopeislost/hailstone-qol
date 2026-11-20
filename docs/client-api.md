@@ -36,9 +36,19 @@ Update this file whenever the add-on starts using, or stops using, a client func
 | `mq.cmd(line)` | `/target id N`, `/nav id N` (Travel to) | ingame (a hand-installed script runs with player rights) |
 | `hs.server()` | detect Project Triune | source; `nil` before the world login |
 | `hs.inspect_item(id)` | open another item version | source |
-| `eq.DrawZoneMap` | the map line wraps it | source |
-| `eq.DrawMinimap(cx, cy, r, range, rotate)` | the minimap line wraps it; returns north's screen direction `(sin, -cos)` of the heading; the player is the circle's centre, `r / range` pixels per map unit | ingame |
+| `hs.UI.map.DrawZone` (the pack's name for `eq.DrawZoneMap`) | the map line wraps it; the installed Modern map draws through this | source |
+| `hs.UI.map.DrawMinimap(cx, cy, r, range, rotate)` (the pack's name for `eq.DrawMinimap`) | the minimap line wraps it; returns north's screen direction `(sin, -cos)` of the heading, then the player's map point and `r / range` (the player is the circle's centre) | ingame |
 | `mq.pickle`, `mq.configDir` | save settings (`qol.lua`) and the named tracker's per-zone lists (`qol_named.lua`) | source |
+
+`hs.UI` is a facade the client builds at start-up over the same functions the flat `eq`/`hs` names give
+(`hs.DrawZoneMap` becomes `hs.UI.map.DrawZone`). The map and minimap adapters therefore shadow both the pack's
+`hs.UI.map` entry and the flat `eq` name in their own script environment; shadowing `eq.DrawZoneMap` alone does not
+reach a pack that calls the facade, because it captured the original function.
+
+The host keeps a plugin folder's globals across a hot reload of one of its files (`lua_host.cpp`), so on a reload
+`eq` and `hs` are the adapter's own shadows. The adapters keep the client's functions in `qol_map_hooks` and replace
+only their own hook; reading the current globals as the client's views would wrap the previous wrapper. Code from
+before D055 (no `qol_map_hooks`) therefore needs one restart (`/lua stop qol`, `/lua run qol`) instead of a reload.
 
 In a script, `dofile`/`loadfile` read from the **config directory** (so `dofile('qol.lua')` reads the settings),
 while `require` loads module files **next to the script** (`require('core.named_data')` for the generated

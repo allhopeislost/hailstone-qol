@@ -53,16 +53,24 @@ player = nil
 assert(functions.map_target() == nil)
 player = {spawn_id = 1, target_id = 2, in_zone = true}
 
-local function adapter(mode)
+local function adapter(mode, first)
   local state = {lines = {}, circles = {}, clips = 0, base = 0, calls = 0, windows = {},
     result = table.pack(2, 10, 20, 15, 25), args = table.pack(0, 0, 200, 100, 1), plugin = true,
     settings = {['map.sidebar'] = '0', ['map.showMarkers'] = '0'}}
+  local function drawZone(...)
+    state.calls = state.calls + 1
+    state.lastArgs = table.pack(...)
+    return table.unpack(state.result, 1, state.result.n)
+  end
+  -- The client has both; the minimap adapter is loaded in the same environment in the combined check.
+  local function drawMinimap(...)
+    state.minimapCalls = (state.minimapCalls or 0) + 1
+    state.minimapArgs = table.pack(...)
+    return 0, -1, 15, 25, 0.5
+  end
   local api = {
-    DrawZoneMap = function(...)
-      state.calls = state.calls + 1
-      state.lastArgs = table.pack(...)
-      return table.unpack(state.result, 1, state.result.n)
-    end,
+    DrawZoneMap = drawZone,
+    DrawMinimap = drawMinimap,
     Plugin = function(name)
       assert(name == 'script:qol')
       if state.plugin then return {map_target = functions.map_target} end
@@ -72,9 +80,19 @@ local function adapter(mode)
     ZoneName = function() return 'Example', 'example' end,
     MapAutoZ = function() return false end,
   }
-  if mode == 'missing' then api.DrawZoneMap = nil end
-  -- Model the host's read-only eq view: any accidental write fails the test.
-  local readonly = setmetatable({}, {__index = api, __newindex = function() error('shared API write') end})
+  local mapApi = {DrawZone = drawZone, DrawMinimap = drawMinimap}
+  if mode == 'missing' then
+    api.DrawZoneMap, api.DrawMinimap, mapApi.DrawZone, mapApi.DrawMinimap = nil, nil, nil, nil
+  elseif mode == 'facade' then
+    api.DrawZoneMap, api.DrawMinimap = nil, nil -- only the pack's hs.UI names exist
+  end
+  -- Model the host's read-only views: any accidental write into a shared table fails the test, and the
+  -- fixture keeps the client functions so the test can prove they were not replaced.
+  local function view(tbl)
+    return setmetatable({}, {__index = tbl, __newindex = function() error('shared API write') end})
+  end
+  local readonly = view(api)
+  local hsApi = view({UI = view({map = view(mapApi)})})
   local ui = {
     window = function(name, fn) state.windows[name] = fn end,
     base_window = function() state.base = state.base + 1 end,
@@ -97,7 +115,7 @@ local function adapter(mode)
   for _, name in ipairs({'DrawRectFilled', 'DrawRect', 'SetCursorPos', 'InvisibleButton', 'PushFont', 'PopFont'}) do
     ui[name] = function() end
   end
-  local env = setmetatable({eq = readonly, ui = ui}, {__index = _G})
+  local env = setmetatable({eq = readonly, hs = hsApi, ui = ui}, {__index = _G})
   env.dofile = function(path)
     if path == 'lib/hud.lua' then
       local color = {1, 1, 1, 1}
@@ -106,18 +124,37 @@ local function adapter(mode)
         Hit = function(id) return state.zoomIn and id == '##zin' end},
         Dialog = function(_, _, _, body) body(0, 0, 400, 300, 1) end}
     end
-    assert(path == 'map.lua', 'load stock map, never recursively load the adapter')
-    if mode == 'failed' then error('map unavailable') end
-    if mode == 'stock' then return assert(loadfile(arg[1], 't', env))() end
-    -- Like lua_host.cpp, the pack's file executes with the add-on's _ENV.
-    return assert(load([[ui.window('Map', function()
-      results = table.pack(eq.DrawZoneMap(table.unpack(args, 1, args.n)))
-    end)]], 'stock map fixture', 't', env))()
+    if mode == 'failed' or state.dofileFails then error(path .. ' unavailable') end
+    if path == 'map.lua' then
+      -- Like lua_host.cpp, the pack's file executes with the add-on's _ENV and captures its API once, as
+      -- the installed Modern pack does; the legacy mode keeps the older flat eq call covered.
+      local call = mode == 'legacy' and 'eq.DrawZoneMap' or 'API.map.DrawZone'
+      return assert(load(([[local API = hs.UI
+      ui.window('Map', function()
+        results = table.pack(%s(table.unpack(args, 1, args.n)))
+      end)]]):format(call), 'stock map fixture', 't', env))()
+    end
+    assert(path == 'minimap.lua', 'load stock map or minimap, never an adapter')
+    local call = mode == 'legacy' and 'eq.DrawMinimap' or 'API.map.DrawMinimap'
+    return assert(load(([[local API = hs.UI
+    ui.window('Minimap', function()
+      minimapResults = table.pack(%s(100, 100, 50, 100, true))
+    end)]]):format(call), 'stock minimap fixture', 't', env))()
   end
   env.args = state.args
+  if first == 'minimap' then assert(loadfile('ui/modern/minimaptargetline.lua', 't', env))() end
   assert(loadfile('ui/modern/maptargetline.lua', 't', env))()
-  state.env, state.original = env, readonly
+  state.env, state.original, state.hsApi = env, readonly, hsApi
+  state.draw, state.minimapDraw = drawZone, drawMinimap
   return state
+end
+
+local function sameTuple(a, b)
+  if a.n ~= b.n then return false end
+  for i = 1, a.n do
+    if a[i] ~= b[i] then return false end
+  end
+  return true
 end
 
 local s = adapter()
@@ -126,7 +163,15 @@ assert(s.calls == 1 and s.clips == 0 and #s.lines == 1 and #s.circles == 1)
 local line = s.lines[1]
 assert(line[1] == 110 and line[2] == 60 and line[3] == 200 and line[4] == -70)
 assert(s.original.DrawZoneMap ~= s.env.eq.DrawZoneMap, 'API intercepted locally only')
+assert(s.hsApi.UI.map.DrawZone ~= s.env.hs.UI.map.DrawZone, 'pack facade intercepted locally only')
+assert(s.original.DrawZoneMap == s.draw and s.hsApi.UI.map.DrawZone == s.draw,
+  'the shared views keep the client functions')
 assert(s.env.results.n == 5 and s.env.results[5] == 25)
+
+-- Older files call the flat eq name; the same wrapper answers it.
+local legacy = adapter('legacy')
+legacy.windows.Map()
+assert(legacy.calls == 1 and #legacy.lines == 1 and #legacy.circles == 1)
 
 -- Pan and zoom: use the actual call's centre, not a later Follow update.
 s.env.args = table.pack(20, 40, 220, 140, 3, 30, -10, false)
@@ -134,8 +179,9 @@ s.result = table.pack(4, 10, 20, 15, 25, nil, 'future return')
 s.windows.Map()
 line = s.lines[2]
 assert(line[1] == 60 and line[2] == 230 and line[3] == 240 and line[4] == -30)
-assert(s.lastArgs.n == 8 and s.lastArgs[8] == false)
-assert(s.env.results.n == 7 and s.env.results[6] == nil and s.env.results[7] == 'future return')
+assert(sameTuple(s.lastArgs, table.pack(20, 40, 220, 140, 3, 30, -10, false)), 'all arguments pass through')
+assert(sameTuple(s.env.results, table.pack(4, 10, 20, 15, 25, nil, 'future return')),
+  'all return values pass through, a nil included')
 
 -- Read the current endpoint each frame: movement and target loss cannot leave a cached line.
 target = {x = -10, y = 20}
@@ -143,6 +189,31 @@ s.windows.Map()
 line = s.lines[3]
 assert(line[3] == -80 and line[4] == 170)
 target = {x = 40, y = -60}
+
+-- A reload runs in the same plugin globals (lua_host.cpp keeps a folder's environment), so it must
+-- replace its hook there: one client call and one overlay line per frame, not one more of each.
+local calls, drawn = s.calls, #s.lines
+assert(loadfile('ui/modern/maptargetline.lua', 't', s.env))()
+assert(s.env.eq ~= s.original and s.env.hs ~= s.hsApi, 'a reload keeps the shadow instead of restoring the client view')
+assert(s.env.eq.DrawZoneMap ~= s.original.DrawZoneMap, 'a reload keeps the hook')
+s.windows.Map()
+assert(s.calls == calls + 1 and #s.lines == drawn + 1, 'a reload replaces the wrapper instead of stacking it')
+assert(s.original.DrawZoneMap == s.draw and s.hsApi.UI.map.DrawZone == s.draw,
+  'a reload still leaves the shared views alone')
+
+-- A failed pack load drops this script's hook; the names then pass straight through.
+s.dofileFails = true
+assert(loadfile('ui/modern/maptargetline.lua', 't', s.env))()
+s.dofileFails = false
+s.windows.Map()
+assert(s.base == 1, 'a failed load keeps the bare map window')
+assert(s.env.eq.DrawZoneMap == s.draw and s.env.hs.UI.map.DrawZone == s.draw,
+  'a failed load clears the hook instead of restoring a stale wrapper')
+
+-- The next reload installs the hook again and draws once.
+assert(loadfile('ui/modern/maptargetline.lua', 't', s.env))()
+s.windows.Map()
+assert(s.calls == calls + 2 and #s.lines == drawn + 2)
 
 local function hidden()
   local count = #s.lines
@@ -166,31 +237,81 @@ for _, result in ipairs({table.pack(), table.pack(2, 10, 20), table.pack(0, 10, 
   s.result = result
   hidden()
 end
-for _, mode in ipairs({'missing', 'failed'}) do
-  local fallback = adapter(mode)
-  fallback.windows.Map()
-  assert(fallback.base == 1 and fallback.env.eq == fallback.original)
-end
+local missing = adapter('missing')
+missing.windows.Map()
+assert(missing.base == 1 and missing.env.eq == missing.original and missing.env.hs == missing.hsApi,
+  'with no client function nothing is shadowed and the bare map window opens')
+local failed = adapter('failed')
+failed.windows.Map()
+assert(failed.base == 1 and failed.env.eq.DrawZoneMap == failed.draw
+  and failed.env.hs.UI.map.DrawZone == failed.draw, 'a failed pack load leaves both names passing straight through')
+
+-- The add-on loads both adapters in one environment: the first makes the shim and the second hooks only
+-- its own function, so each frame calls each client function once.
+local both = adapter()
+assert(loadfile('ui/modern/minimaptargetline.lua', 't', both.env))()
+assert(both.env.eq.DrawMinimap ~= both.original.DrawMinimap, 'the second adapter finds the shim and hooks its function')
+assert(both.env.eq.DrawZoneMap ~= both.original.DrawZoneMap, 'the first adapter keeps its hook')
+assert(both.original.DrawMinimap == both.minimapDraw and both.original.DrawZoneMap == both.draw)
+both.windows.Map()
+both.windows.Minimap()
+assert(both.calls == 1 and both.minimapCalls == 1 and #both.lines == 2, 'one client call and one overlay per window')
+
+-- A failed reload of one adapter clears only its own hook; the other window still draws exactly once.
+both.dofileFails = true
+assert(loadfile('ui/modern/maptargetline.lua', 't', both.env))()
+both.dofileFails = false
+assert(both.env.eq.DrawZoneMap == both.draw, 'the failed map hook is cleared')
+assert(both.env.eq.DrawMinimap ~= both.original.DrawMinimap, 'the minimap hook survives')
+local before = #both.lines
+both.windows.Minimap()
+assert(both.minimapCalls == 2 and #both.lines == before + 1, 'the minimap still draws after a failed map reload')
+assert(loadfile('ui/modern/maptargetline.lua', 't', both.env))()
+
+both.dofileFails = true
+assert(loadfile('ui/modern/minimaptargetline.lua', 't', both.env))()
+both.dofileFails = false
+assert(both.env.eq.DrawMinimap == both.minimapDraw, 'the failed minimap hook is cleared')
+assert(both.env.eq.DrawZoneMap ~= both.original.DrawZoneMap, 'the map hook survives')
+before = #both.lines
+both.windows.Map()
+assert(both.calls == 2 and #both.lines == before + 1)
+
+-- The other order: the minimap adapter makes the shim and the map adapter finds it.
+local miniFirst = adapter(nil, 'minimap')
+assert(miniFirst.env.eq.DrawZoneMap ~= miniFirst.original.DrawZoneMap,
+  'the map adapter finds the shim made by the minimap adapter')
+assert(miniFirst.env.eq.DrawMinimap ~= miniFirst.original.DrawMinimap)
+miniFirst.windows.Minimap()
+miniFirst.windows.Map()
+assert(miniFirst.minimapCalls == 1 and miniFirst.calls == 1 and #miniFirst.lines == 2)
+
+-- A client that only has the pack's facade names still loads the pack and draws.
+local facade = adapter('facade')
+facade.windows.Map()
+assert(facade.calls == 1 and #facade.lines == 1)
+assert(facade.env.hs.UI.map.DrawZone ~= facade.hsApi.UI.map.DrawZone, 'the facade name is hooked')
 
 if arg[1] then
-  local stock = adapter('stock')
-  stock.zoomIn = true
-  stock.windows.Map()
-  assert(stock.calls == 1 and #stock.lines == 1 and stock.clips == 0)
-  local first = stock.lines[1]
-  local call = stock.lastArgs
-  local cx, cy = call[6] or 10, call[7] or 20
-  assert(first[1] == (call[1] + call[3]) / 2 + (15 - cx) * 2)
-  assert(first[2] == (call[2] + call[4]) / 2 + (25 - cy) * 2)
-  stock.zoomIn = false
-  stock.windows.Map()
-  assert(stock.lastArgs[6] == 15 and stock.lastArgs[7] == 25, 'Follow centre takes effect next frame')
-  stock.shown = false
-  stock.windows.Map()
-  assert(stock.calls == 2, 'closed map does not read positions or draw')
-  stock.shown, stock.inGame = true, false
-  stock.windows.Map()
-  assert(stock.calls == 2, 'out of game does not draw')
-  print('installed Modern map adapter contract: ok')
+  -- A drift check, not proof: it only notices a renamed call early. Comments are stripped first, so
+  -- a commented-out call cannot keep it green.
+  local function source(path)
+    local file = assert(io.open(path, 'rb'))
+    local text = file:read('*a')
+    file:close()
+    return text
+  end
+  local function code(path)
+    local text = source(path)
+    text = text:gsub('%-%-%[(=*)%[.-%]%1%]', '') -- long comments, any level of '='
+    return (text:gsub('%-%-[^\n]*', '')) -- line comments
+  end
+  local map = code(arg[1])
+  assert(map:find('local API%s*=%s*hs%.UI'), 'map.lua still takes its API from hs.UI')
+  assert(map:find('API%.map%.DrawZone%s*%('), 'map.lua still draws through hs.UI.map.DrawZone')
+  local minimap = code(arg[2] or arg[1]:gsub('map%.lua$', 'minimap.lua'))
+  assert(minimap:find('local API%s*=%s*hs%.UI'), 'minimap.lua still takes its API from hs.UI')
+  assert(minimap:find('API%.map%.DrawMinimap%s*%('), 'minimap.lua still draws through hs.UI.map.DrawMinimap')
+  print('installed Modern map call contract: ok')
 end
 print('map target data and adapter: ok')
