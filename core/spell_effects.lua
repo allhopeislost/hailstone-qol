@@ -100,12 +100,17 @@ local FOCUS = {
   [339] = { name = 'Trigger on Cast', trigger = true }, -- base is the chance, base2 the spell
 }
 
--- Limit phrases (check_focus_limit's cases). A nil phrase leaves that slot raw.
+-- Limit phrases (check_focus_limit's cases). Every named limit condition joins the Limits row: a curated phrase
+-- where the switch has one, generatedLimit where it does not. Only an SPA with no name stays raw.
 local RESIST = { [0] = 'unresistable', 'magic', 'fire', 'cold', 'poison', 'disease', 'chromatic', 'prismatic',
   'physical', 'corruption' }
+-- Target types 16-18 are named by the client itself (cast_spell.cpp: case 16 // plant, case 17 // giant,
+-- case 18 // dragon); the rest come from spell_ui.cpp's target_type_name. A type missing here is shown by number
+-- (LIMIT[136]).
 local TARGET = { [1] = 'line of sight', [3] = 'group teleport', [4] = 'area around caster', [5] = 'single',
   [6] = 'self', [8] = 'area around target', [9] = 'animal', [10] = 'undead', [11] = 'summoned',
-  [13] = 'lifetap', [14] = 'pet', [15] = 'corpse', [41] = 'group' }
+  [13] = 'lifetap', [14] = 'pet', [15] = 'corpse', [16] = 'plant', [17] = 'giant', [18] = 'dragon',
+  [41] = 'group' }
 local SPELL_TYPE = { [0] = 'detrimental', [1] = 'beneficial', [2] = 'beneficial group-only' }
 
 -- lookup(id) may return a name string (the old contract) or {name = <string>, summary = <string|nil>}.
@@ -139,14 +144,19 @@ limit(135, function(effect)
 end)
 limit(136, function(effect)
   local name = TARGET[math.abs(effect.base)]
-  if not name then return nil end
+  -- The client's 0x88 compares the target type: a positive base includes it, a negative one excludes it. A type it
+  -- does not name is still a real condition, so show its number instead of dropping the slot to a raw line.
+  name = name or ('type ' .. math.abs(effect.base))
   return (effect.base < 0 and 'target not ' or 'target ') .. name
 end)
 limit(137, function(effect)
   if effect.base == 0 then return 'HP effect' end
+  -- 0x89 is `bool include = base >= 0` and passes when `found == include`; an id the name table does not know
+  -- still says whether the spell must have that effect.
+  local include = effect.base >= 0
   local name = GENERATED[math.abs(effect.base)]
-  if not name then return nil end
-  return (effect.base < 0 and 'no ' or 'has ') .. name
+  if not name then name = 'effect ' .. math.abs(effect.base) end
+  return (include and 'has ' or 'no ') .. name
 end)
 limit(138, function(effect) return SPELL_TYPE[effect.base] end)
 limit(139, function(effect, lookup)
@@ -169,6 +179,41 @@ limit(414, function(effect)
   local name = SKILLS[effect.base]
   return name and 'skill ' .. name or nil
 end)
+-- The remaining limit SPAs the client applies (check_focus_limit), each read from its own case.
+limit(385, function(effect) -- 0x181: match_or_exclude(spell.spell_group, base)
+  return (effect.base < 0 and 'not spell group ' or 'spell group ') .. math.abs(effect.base)
+end)
+limit(403, function(effect) -- 0x193: match_or_exclude(spell.spell_class, base)
+  return (effect.base < 0 and 'not spell class ' or 'spell class ') .. math.abs(effect.base)
+end)
+limit(404, function(effect) -- 0x194: match_or_exclude(spell.spell_subclass, base)
+  return (effect.base < 0 and 'not spell subclass ' or 'spell subclass ') .. math.abs(effect.base)
+end)
+-- 0x19b: a bit per class (u(base) & (1u << class)), so a plain number would read like a class id. The base is an
+-- unsigned mask, so format its raw 32-bit value (bit 31 would make the stored integer negative).
+limit(411, function(effect) return ('class mask 0x%x'):format(effect.base & 0xffffffff) end)
+-- 0x19c: a bit per race (u(base) & (1u << race)).
+limit(412, function(effect) return ('race mask 0x%x'):format(effect.base & 0xffffffff) end)
+limit(422, function(effect) return 'hits >= ' .. effect.base end) -- 0x1a6: spell.hit_count >= base
+limit(423, function(effect) return 'hit count type ' .. effect.base end) -- 0x1a7: spell.hit_count_type == base
+-- 0x19f: an item of item type base and subclass base2 in a slot of the mask; -1 means any.
+limit(415, function(effect)
+  local text = effect.base == -1 and 'any item class' or ('item class ' .. effect.base)
+  if effect.base2 ~= -1 then text = text .. ', subclass ' .. effect.base2 end
+  return text
+end)
+
+-- A limit condition the switch above does not handle still joins the Limits row (D056): a generated name that
+-- starts with Limit or FF is a condition, shown as that name minus the prefix, lowercased, plus its base. An SPA
+-- with no generated name, or with a name that does not start that way, returns nil and keeps today's behaviour.
+local function generatedLimit(effect)
+  local label = GENERATED[effect.effect]
+  if type(label) ~= 'string' then return nil end
+  local text = label:lower()
+  local short = text:gsub('^limit ', ''):gsub('^ff ', '')
+  if short == text then return nil end
+  return short .. ' ' .. ('%d'):format(effect.base)
+end
 
 local function focusRow(slot, effect, lookup)
   local f = FOCUS[effect.effect]
@@ -583,7 +628,9 @@ function M.rows(spell, lookup)
       -- empty slot
     elseif isInteger(effect.effect) and isInteger(effect.base) and isInteger(effect.base2)
         and isInteger(effect.max) and isInteger(effect.formula) then
-      local phrase = LIMIT[effect.effect] and LIMIT[effect.effect](effect, lookup)
+      local limitPhrase = LIMIT[effect.effect]
+      local phrase = limitPhrase and limitPhrase(effect, lookup)
+      if not phrase then phrase = generatedLimit(effect) end
       if phrase then
         limits[#limits + 1] = phrase
       else

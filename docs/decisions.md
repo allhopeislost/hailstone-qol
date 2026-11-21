@@ -593,3 +593,31 @@ layer and drew the line twice, and a failed load put the stale wrapper back. D05
 updating a live session from D054 still wraps one stale layer: restart the plugin (`/lua stop qol`, `/lua run qol`),
 which the local test steps do anyway.
 Rules out: Reading `eq`/`hs` at the top of the file as the client's views; wrapping whatever the globals hold.
+
+## D056 Every limit SPA the client names joins the Limits row
+Status: Accepted
+Recorded: 2026-11-20
+Supersedes: D044 (only where a limit SPA whose meaning the client does not confirm stayed a raw line)
+Decision: every focus limit joins the muted `Limits` row. The cases this decision added to `check_focus_limit`'s
+switch have curated phrases: spell group (0x181), spell class (0x193), spell subclass (0x194), class mask (0x19b),
+race mask (0x19c), item class (0x19f), hits >= N (0x1a6) and hit count type (0x1a7). Where the client decides the
+sense with `match_or_exclude` (0x181, 0x193, 0x194), a negative base is the exclusion: `not spell group 385`,
+`not spell class 3`, `not spell subclass 3`. The two masks are unsigned bitfields, shown as their raw 32-bit value
+(`class mask 0x2`, `race mask 0x80000003`), so bit 31 is a bit and not a sign. 0x19f compares the item class and
+subclass exactly and reserves -1 for "any", so base -1 reads `any item class`; 0x1a6 is `hit_count >= base`
+(`hits >= 3`); 0x1a7 is `hit_count_type == base`, printed as stored. 0x89 (Limit Effect) keeps its effect-name list
+and an id without a name reads `no effect N` for a negative base, `has effect N` for a positive one. The other
+curated limit phrases (resist, target, level, mana, cast time, combat skills) are unchanged. Every remaining limit
+condition is shown from its own name table entry: a generated name that starts with `Limit ` or `FF ` joins the
+Limits row as that name without the prefix, lowercased, plus the base (`Limit HP Percent` base 50 is
+`hp percent 50`). A slot whose generated name does not start with `Limit ` or `FF ` keeps its current shape, and one
+the table has no name for stays a raw line (D048). Target types the table does not name are shown by number
+(`target not type 20`). Types 16-18 are named by the client itself
+(`code/src/game/mechanics/cast_spell.cpp`: `case 16 // plant`, `case 17 // giant`, `case 18 // dragon`), and the rest
+of the table follows `target_type_name` in `code/src/app/spell_ui.cpp` (`target not giant`).
+Why: the screenshot case showed `Slot 9: Limit Target (SPA 136, base -17, base2 0, max 0, formula 100)` and its base
+-18 twin next to an otherwise clean effects list. The client's `check_focus_limit` applies both slots (a negative base
+is "not this target type"), so they are ordinary limits, not unknown data. The same held for the other conditions the
+client names, including ones outside its switch: a raw SPA dump hid a real restriction.
+Rules out: guessing a sign or meaning the client does not confirm; a new option, file or switch; showing `base2`, max
+or formula of a condition whose meaning is unknown.

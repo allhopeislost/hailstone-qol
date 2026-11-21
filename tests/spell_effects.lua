@@ -425,10 +425,71 @@ assert(#rows == 1 and rows[1].name == 'Spell Damage' and rows[1].min == '+25%')
 assert(rows[1].is_focus and not rows[1].is_limit and not rows[1].is_raw)
 assert(fx.format(rows[1]) == 'Spell Damage +25%')
 
--- A limit SPA that is not in the curated LIMIT table stays raw: its base is a condition value (a class id, a
--- spell id, a bitmask), not an amount, so the shape rule must not show it as +N.
+-- A limit SPA with a curated phrase joins the Limits row; its base is a condition value (a class id, a spell id, a
+-- bitmask), never an amount, so it must not appear as a +N effect row.
 rows = fx.rows({class_level = {1}, effects = {{effect = 403, base = 1, base2 = 0, max = 0, formula = 100}}})
-assert(rows[1].is_raw and rows[1].min:find('SPA 403', 1, true))
+assert(#rows == 1 and rows[1].name == 'Limits' and rows[1].is_limit and not rows[1].is_raw)
+assert(rows[1].min == 'spell class 1')
+
+-- 403/404 mirror the client's match_or_exclude (0x193/0x194): a negative base is the exclusion.
+rows = fx.rows({class_level = {1}, effects = {{effect = 403, base = -3, base2 = 0, max = 0, formula = 100}}})
+assert(#rows == 1 and rows[1].is_limit and not rows[1].is_raw)
+assert(rows[1].min == 'not spell class 3')
+rows = fx.rows({class_level = {1}, effects = {{effect = 404, base = -3, base2 = 0, max = 0, formula = 100}}})
+assert(rows[1].min == 'not spell subclass 3')
+
+-- 411/412 are bitmasks in the client (0x19b/0x19c), so they are shown as a mask, not as a class or race id.
+rows = fx.rows({class_level = {1}, effects = {{effect = 411, base = 2, base2 = 0, max = 0, formula = 100}}})
+assert(#rows == 1 and rows[1].is_limit and rows[1].min == 'class mask 0x2')
+rows = fx.rows({class_level = {1}, effects = {{effect = 412, base = 4, base2 = 0, max = 0, formula = 100}}})
+assert(rows[1].min == 'race mask 0x4')
+-- The mask is unsigned: bit 31 is a real bit, not a sign to strip.
+rows = fx.rows({class_level = {1}, effects = {{effect = 412, base = -2147483645, base2 = 0, max = 0, formula = 100}}})
+assert(#rows == 1 and rows[1].is_limit and not rows[1].is_raw)
+assert(rows[1].min == 'race mask 0x80000003')
+
+-- 137 with an unknown effect id keeps its condition: no name, but still "no effect N" (0x89: base >= 0 includes).
+rows = fx.rows({class_level = {1}, effects = {{effect = 137, base = -12345, base2 = 0, max = 0, formula = 100}}})
+assert(#rows == 1 and rows[1].is_limit and not rows[1].is_raw)
+assert(rows[1].min == 'no effect 12345')
+
+-- A named limit SPA outside the client switch (408 Limit HP Percent) joins the Limits row in short form.
+rows = fx.rows({class_level = {1}, effects = {{effect = 408, base = 50, base2 = 0, max = 0, formula = 100}}})
+assert(#rows == 1 and rows[1].is_limit and not rows[1].is_raw)
+assert(rows[1].min == 'hp percent 50')
+
+-- 415: -1 in base or base2 is "any" (0x19f), so it must not read as an item class id.
+rows = fx.rows({class_level = {1}, effects = {{effect = 415, base = -1, base2 = -1, max = 0, formula = 100}}})
+assert(rows[1].min == 'any item class')
+rows = fx.rows({class_level = {1}, effects = {{effect = 415, base = 2, base2 = 5, max = 0, formula = 100}}})
+assert(rows[1].min == 'item class 2, subclass 5')
+
+-- The screenshot case (Improved Damage I): every limit joins one Limits row, including target types the client does
+-- not name, so no slot falls back to a raw line.
+rows = fx.rows({id = 2336, class_level = {1}, effects = {
+  {effect = 124, base = 50, base2 = 0, max = 0, formula = 100},
+  {effect = 134, base = 20, base2 = 5, max = 0, formula = 100},
+  {effect = 141, base = 1, base2 = 0, max = 0, formula = 100},
+  {effect = 138, base = 0, base2 = 0, max = 0, formula = 100},
+  {effect = 311, base = 0, base2 = 0, max = 0, formula = 100},
+  {effect = 136, base = -17, base2 = 0, max = 0, formula = 100},
+  {effect = 136, base = -18, base2 = 0, max = 0, formula = 100},
+}})
+assert(#rows == 2, 'one focus row and one limits row')
+assert(rows[1].name == 'Spell Damage' and rows[1].min == '+50%')
+assert(rows[2].name == 'Limits' and rows[2].is_limit)
+assert(rows[2].min == 'level <= 20 (-5% per level over), instant, detrimental, no combat skills, '
+  .. 'target not giant, target not dragon')
+for _, row in ipairs(rows) do assert(not row.is_raw) end
+
+-- An unknown target type is still a condition: shown by number, with the sign kept, not as a raw SPA dump.
+rows = fx.rows({class_level = {1}, effects = {{effect = 136, base = -20, base2 = 0, max = 0, formula = 100}}})
+assert(#rows == 1 and rows[1].is_limit and not rows[1].is_raw)
+assert(rows[1].min == 'target not type 20')
+
+-- A limit SPA with no generated name keeps the raw line (D048).
+rows = fx.rows({class_level = {1}, effects = {{effect = 9999, base = 1, base2 = 0, max = 0, formula = 100}}})
+assert(#rows == 1 and rows[1].is_raw and rows[1].min:find('SPA 9999', 1, true))
 
 -- Damage per mana uses the spell's own direct damage: SPA 0 (HP) and SPA 79 (Instant HP) with a negative base.
 assert(fx.damage(nil) == nil and fx.damage({}) == nil)
