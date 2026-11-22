@@ -225,8 +225,20 @@ for _, drop in ipairs(frenzied.drops) do
 end
 assert(hasSash and file.items[1365] == 'Flowing Black Silk Sash', 'the ghoul drops the silk sash at 20%')
 
--- the loot index for hand-tracked (placeholder-style) names: a reanimated hand is not flagged
--- named in the database, but its drops are indexed by name
+-- the mindrop rule (D057): community named without a DB flag are listed; flagged junk and
+-- #-prefixed server spawns are not. Drops keep upgraded item ids with the DB's own names.
+local gukByName = {}
+for _, entry in ipairs(file.zones.gukbottom.named) do gukByName[entry.name] = entry end
+assert(gukByName['a_reanimated_hand'] and gukByName['a_ghoul_scribe'] and gukByName['a_minotaur_elder'],
+  'Lower Guk lists the community named that had no DB flag')
+assert(gukByName['Zol_Ghoul_Knight'] == nil, 'a flagged non-named is not listed')
+local hashName
+for name in pairs(gukByName) do if name:sub(1, 1) == '#' then hashName = name end end
+assert(hashName == nil, 'no #-prefixed server spawns in the named list')
+assert(file.items[900010] == 'Fabled Cloak of Flames', 'an upgraded drop keeps its DB name')
+
+-- the loot index for hand-tracked (placeholder-style) names also keeps the drops of names a
+-- player tracks by hand, such as a reanimated hand (now listed as named too, D057)
 assert(type(file.loot) == 'table', 'the loot index is a table')
 local handLoot = file.loot['a reanimated hand']
 assert(type(handLoot) == 'table' and #handLoot > 0, 'a reanimated hand is in the loot index')
@@ -383,7 +395,13 @@ assert(frenziedRow and frenziedRow.spawned == true and frenziedRow.id == 2 and f
   'a frenzied ghoul is up, at 30')
 local lordRow = rowOf(list.rows, 'the ghoul lord')
 assert(lordRow and lordRow.spawned == true and lordRow.id == 3 and lordRow.dist == 100)
-list = functions.named_list('nadox')
+-- any other zone from the generated data: not every zone has named under the mindrop rule
+local otherZone
+for short in pairs(file.zones) do
+  if short ~= 'gukbottom' then otherZone = short break end
+end
+assert(otherZone, 'there is another zone with named')
+list = functions.named_list(otherZone)
 assert(list.current == false and list.long ~= nil)
 for _, row in ipairs(list.rows) do assert(row.spawned == false and row.id == nil, 'nothing spawns elsewhere') end
 assert(functions.named_list(5) == nil and functions.named_list('') == nil

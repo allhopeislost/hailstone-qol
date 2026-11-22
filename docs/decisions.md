@@ -621,3 +621,27 @@ is "not this target type"), so they are ordinary limits, not unknown data. The s
 client names, including ones outside its switch: a raw SPA dump hid a real restriction.
 Rules out: guessing a sign or meaning the client does not confirm; a new option, file or switch; showing `base2`, max
 or formula of a condition whose meaning is unknown.
+
+## D057 Named detection uses guaranteed loot drops
+Status: Accepted
+Recorded: 2026-11-22
+Supersedes: D028 (only the named-detection rule; the rest of the tracker stands), D030 (only the rejection of loot-based detection; the loot index stays)
+Decision: `tools/gen_named_data.py` marks a spawned NPC as named when its loottable has at least one
+`loottable_entries` row with `mindrop >= 1` — a guaranteed drop. Placeholder-style names (`a_...`/
+`an_...`) count too, since classic named mostly have such names. Names that start with `#`, end in
+a digit or contain "corpse" stay out, as do service NPCs and `EXCLUDED_NAMES`. The old
+`spawn_limit` / `rare_spawn` / `unique_` / `raid_target` / `lastname` flags and the non-placeholder
+name rule no longer make an NPC named. Drop lists still come straight from the database loot chain,
+so upgraded item ids the DB lists in their own right (base id + 1,000,000 Enchanted and + 2,000,000
+Legendary, with the DB's own names) are kept as-is. Regenerated data: 227 zones, 1,954 named,
+23,251 drops, 7,943 loot-index names, 9,000 items (1.74 MB).
+Why: community sites (Almar's Guides, EQ Atlas, EQ Legends Tools) list the classic named of Lower
+Guk. The old flag rule found only 7 of them plus a junk spawn (`Zol_Ghoul_Knight`), while
+`mindrop >= 1` finds all of them plus `a_reanimated_hand` and the other community named, and drops
+the junk. Globally the old rule listed 10,751 zone/name pairs, many of them `#` event spawns and rare
+placeholders; the new rule lists 1,954 and keeps the generated file roughly half the size. The
+`mindrop` flag means "this droplist always gives at least one item", not "this item drops at 100%",
+which is why it does not pull in the high-chance junk D030 rejected.
+Rules out: the flag-based named rule; a generic loot-chance threshold. Known limitation: 150 zones
+that had flagged named now have none, because their named have no guaranteed drop, and a few
+container objects with large loottables (for example `a_moldy_chest`) pass the rule.

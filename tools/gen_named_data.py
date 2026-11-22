@@ -12,11 +12,13 @@ The dump is streamed (no database server needed); the output is deterministic ap
 from the `generated` date line: zones, named and drops are sorted, so re-running on a
 new dump gives a clean diff. Only zones with at least one named NPC are written.
 
-Named detection (npc_types):
-    spawn_limit = 1 OR rare_spawn = 1 OR unique_ = 1 OR raid_target = 1
-    OR lastname is set
-    OR the name is not a placeholder (does not start with a_ / an_, no trailing digit,
-       not #-prefixed). Service NPCs (trainers/bankers/merchants by class id) are excluded.
+Named detection (npc_types + loottable_entries):
+    an NPC is named when its loottable has at least one entry with mindrop >= 1 (a guaranteed
+    drop). That matches the community's named list in classic zones, where most named are
+    placeholder-style names (a_.../an_...) without a DB flag. Names that are #-prefixed, end in
+    a digit or contain "corpse" are still excluded, as are service NPCs (trainers/bankers/
+    merchants by class id). This replaces the old spawn_limit/rare_spawn/unique_/raid_target/
+    lastname rule (see docs/decisions.md D057).
 
 Drops: loottable -> loottable_entries(probability) -> lootdrop -> lootdrop_entries(item_id, chance);
 effective chance = probability * chance / 100, kept when > 0.
@@ -24,9 +26,9 @@ effective chance = probability * chance / 100, kept when > 0.
 Besides the named zones, a `loot` index maps every placeholder-style spawned name (a_.../an_...,
 letters, no trailing digit) to its drops (effective chance >= 5%, at most 12 per name, keyed like
 Lua's nameKey: lowercase, underscores read as spaces). The /named window's drop list falls back to
-it for names a player tracks by hand, e.g. "a reanimated hand" in gukbottom, which the release
-database does not flag as named (no spawn_limit/rare_spawn/unique_/raid_target/lastname) but the
-community treats as one.
+it for names a player tracks by hand that are not in a zone's named list. Drops come straight from
+the database's lootdrop_entries, including upgraded item ids (base id + 1,000,000 for Enchanted,
++ 2,000,000 for Legendary) that the release DB lists as drops in their own right.
 """
 
 from __future__ import annotations
@@ -155,33 +157,23 @@ def is_service(class_id) -> bool:
             or class_id in BANKERS or class_id in MERCHANTS)
 
 
-def is_placeholder_name(name: str) -> bool:
-    low = name.lower()
-    if not low or low.startswith("#"):
-        return True
-    if not re.search(r"[a-z]", low):  # "_", "__", ... are invisible/trigger names
-        return True
-    if low.startswith("a_") or low.startswith("an_"):
-        return True
-    if low[-1].isdigit():
-        return True
-    if "corpse" in low:
-        return True
-    return False
+def is_named(npc: dict, mindrop_lts: set) -> bool:
+    """A named NPC is one whose loottable has a guaranteed drop (mindrop >= 1).
 
-
-def is_named(npc: dict) -> bool:
+    Placeholder-style names (a_.../an_...) count too: classic named mostly have such names and
+    no DB flag. Names that are #-prefixed, end in a digit or contain "corpse" are server/event
+    spawns and stay out (D057).
+    """
     name = npc.get("name")
     if not isinstance(name, str) or not name:
         return False
-    if not re.search(r"[a-z]", name.lower()):
-        return False  # invisible/trigger names ("_", "__") are never named, whatever the flags
-    if not is_placeholder_name(name):
-        return True
-    # placeholder-looking names ("a_...") can still be named via a flag or a lastname
-    return (npc.get("spawn_limit") == 1 or npc.get("rare_spawn") == 1
-            or npc.get("unique_") == 1 or npc.get("raid_target") == 1
-            or bool(str(npc.get("lastname") or "").strip()))
+    low = name.lower()
+    if not re.search(r"[a-z]", low):
+        return False  # invisible/trigger names ("_", "__") are never named
+    if low.startswith("#") or low[-1].isdigit() or "corpse" in low:
+        return False
+    lt = npc.get("loottable_id")
+    return isinstance(lt, int) and lt in mindrop_lts
 
 
 def lua_str(s: str) -> str:
@@ -241,12 +233,16 @@ def main() -> int:
     lte = {}  # loottable_id -> [(lootdrop_id, probability)]
     lde = {}  # lootdrop_id -> [(item_id, chance)]
     items = {}  # item id -> Name
+    mindrop_lts = set()  # loottables with a guaranteed drop -> the named rule (D057)
     for table, cols, rows in stream(args.dump):
         if table == "loottable_entries":
             for r in rows:
                 d = rowdict(cols, r)
                 lte.setdefault(d.get("loottable_id"), []).append(
                     (d.get("lootdrop_id"), d.get("probability")))
+                md = d.get("mindrop")
+                if isinstance(md, int) and md >= 1:
+                    mindrop_lts.add(d.get("loottable_id"))
         elif table == "lootdrop_entries":
             for r in rows:
                 d = rowdict(cols, r)
@@ -256,7 +252,8 @@ def main() -> int:
             for r in rows:
                 d = rowdict(cols, r)
                 items[d.get("id")] = d.get("Name")
-    print(f"pass 3: {len(lte)} loottables, {len(lde)} lootdrops, {len(items)} items", file=sys.stderr)
+    print(f"pass 3: {len(lte)} loottables ({len(mindrop_lts)} with mindrop >= 1), "
+          f"{len(lde)} lootdrops, {len(items)} items", file=sys.stderr)
 
     def drops_of(loottable_id):
         out = {}
@@ -280,7 +277,7 @@ def main() -> int:
                     continue
                 if is_service(npc.get("class")):
                     continue
-                if not is_named(npc):
+                if not is_named(npc, mindrop_lts):
                     continue
                 key = npc["name"].lower()
                 if re.sub(r"\s+", " ", key.replace("_", " ").strip()) in EXCLUDED_NAMES:
