@@ -9,7 +9,8 @@
 -- Shape rule (D048): KIND/DISPLAY, FOCUS and LIMIT win. Otherwise the name decides: a pure state is a flag (name
 -- only), a record id is shown as #N, a name with Percent/Chance/Rate/Modifier/Multiplier/Mitigate/Reduction/Haste/
 -- Slow/Accuracy/Strikethrough is a percentage (+N%), and everything else is a number (+N). The value uses the same
--- arithmetic as numeric(); a scaling slot without a class level stays raw, and base2 is not shown.
+-- arithmetic as numeric(); a scaling slot without a class level shows its level 1 value and rate (D058), and base2 is
+-- not shown.
 --
 -- Kinds:  num   signed number            pct   signed percentage        ac     AC (display = floor(raw*3/10))
 --         hp    per-tick when the spell has a duration, else instant     once   instant only
@@ -22,7 +23,8 @@
 --   slot, spa, name, min (text; '' for flags), min_level, max, max_level, scale ('+1 per 2 levels'), skill,
 --   note ('for up to 1m', 'PC 0.5s, up to level 55'), is_raw, is_focus, is_limit
 -- A focus spell has one is_focus row per modifier and one is_limit row that joins every limit phrase.
--- A scaling effect needs the lowest class level of the spell; without one it stays raw (no level is guessed).
+-- A scaling effect shows its value at the spell's lowest class level; without one it shows the level 1 value, the
+-- rate and a cap's level (D058). No class level is guessed.
 -- Values are spell-effect values, not character-sheet totals; an uncapped effect never shows a made-up cap.
 local M = {}
 local GENERATED = require('core.spell_spa_names')
@@ -284,6 +286,13 @@ function M.min_level(spell)
   return best
 end
 
+-- The resist type's name for the `Resist type` header line. The client's spell_resist_type_desc
+-- (spell_effect_text.cpp) names 0-9; another id returns nil so the caller keeps the number.
+function M.resist_name(resist)
+  if type(resist) ~= 'number' or resist % 1 ~= 0 then return nil end
+  return RESIST[resist]
+end
+
 -- The spell's own direct damage: SPA 0 (HP) and SPA 79 (Instant HP) with a negative base, the two the client uses
 -- for direct damage (spell_projectiles.cpp). SPA 0 with a duration is damage per tick, so its total is per-tick x
 -- ticks; SPA 79 is always instant. nil when there is no damage slot, a scaling slot has no class level, or the
@@ -326,9 +335,15 @@ local function numeric(o)
   if not fixed and change(formula, 1) == nil then return nil end
   local sign = base < 0 and -1 or 1
   if o.invert then sign = -sign end
+  -- `plain` rows show the magnitude without the base's sign (a damage shield is stored negative), so their rate
+  -- follows the displayed sign too.
+  local rateSign = o.plain and -sign or sign
   local cap = o.max ~= 0 and math.abs(o.max) or nil
+  local function rawMag(level)
+    return math.abs(base) + (fixed and 0 or change(formula, level))
+  end
   local function mag(level)
-    local m = math.abs(base) + (fixed and 0 or change(formula, level))
+    local m = rawMag(level)
     if cap and m > cap then m = cap end
     return m
   end
@@ -344,12 +359,29 @@ local function numeric(o)
     row.min = show(mag(1))
     return row
   end
-  if not o.level then return nil end
+  -- No class level: show the level 1 value and the rate, and when capped the level that reaches the cap (the formula's
+  -- own levels, so nothing is guessed). `format` only appends `scale` when there is no max, so with a cap the rate
+  -- goes in `note`; the display draws both in the same muted line.
+  if not o.level then
+    row.min = show(mag(1))
+    local rate = o.ac and 'scales with level' or scaleText(formula, o.percent, rateSign)
+    if not cap then
+      row.scale = rate
+      return row
+    end
+    if rawMag(1) >= cap then
+      row.min = show(cap)
+    else
+      row.max, row.max_level = show(cap), firstLevel(1, rawMag, cap)
+    end
+    row.note = rate
+    return row
+  end
   local minM = mag(o.level)
   row.min, row.min_level = show(minM), o.level
   if not cap then
     -- AC is shown as floor(raw * 3 / 10), so its raw growth rate would be wrong; the value still scales.
-    row.scale = o.ac and 'scales with level' or scaleText(formula, o.percent, sign)
+    row.scale = o.ac and 'scales with level' or scaleText(formula, o.percent, rateSign)
     return row
   end
   if minM >= cap then

@@ -53,7 +53,7 @@ text = info.spell({id = 321, spell_icon = 88, recovery_time = 250, recast_time =
     {effect = 0, base = -50, base2 = 0, max = 100, formula = 102}, {effect = 254},
   }, cast_on_you = 'You glow.', cast_on_other = 'glows.', wear_off = 'Your glow fades.'})
 for _, fragment in ipairs({'Recovery: 0.25s', 'Recast: 6.00s', 'Range: 200',
-    'AE range: 35', 'Pushback: -1.5', 'Resist type: 2', 'Modifier: -25', 'CLR 12',
+    'AE range: 35', 'Pushback: -1.5', 'Resist type: fire', 'Modifier: -25', 'CLR 12',
     'HP -62 (level 12) to HP -100 (level 50)'}) do
   assert(text:find(fragment, 1, true), fragment)
 end
@@ -61,6 +61,15 @@ assert(not text:find('Slot 2', 1, true))
 assert(text:find('You glow', 1, true))
 assert(text:find('Wears off', 1, true))
 assert(not info.spell({spell_type = 1, resist = 2, resist_adj = 25}))
+
+-- The resist type is the client's own name (spell_resist_type_desc); 0 is unresistable, and an id it does not
+-- name keeps the number.
+text = info.spell({id = 5, spell_type = 0, resist = 0, effects = {
+  {effect = 4, base = 5, base2 = 0, max = 0, formula = 100}}})
+assert(text:find('Resist type: unresistable', 1, true))
+text = info.spell({id = 6, spell_type = 0, resist = 10, effects = {
+  {effect = 4, base = 5, base2 = 0, max = 0, formula = 100}}})
+assert(text:find('Resist type: 10', 1, true))
 
 -- Supported buff stats render as readable scaling lines.
 text = info.spell({id = 100, class_level = {255, 11}, effects = {

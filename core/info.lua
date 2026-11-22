@@ -55,7 +55,10 @@ local function spell_header_lines(s)
   local pushback = number(s.push_back)
   if pushback and pushback ~= 0 then lines[#lines + 1] = ('Pushback: %.1f'):format(pushback) end
   if s.spell_type == 0 then
-    append(lines, 'Resist type: ', number(s.resist))
+    local resist = number(s.resist)
+    if resist then
+      append(lines, 'Resist type: ', spell_effects.resist_name(resist) or resist)
+    end
     local modifier = integer(s.resist_adj)
     if modifier then lines[#lines + 1] = ('Modifier: %+d'):format(modifier) end
   end

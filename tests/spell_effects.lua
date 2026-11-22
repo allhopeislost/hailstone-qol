@@ -80,14 +80,26 @@ rows = fx.rows({class_level = {20}, effects = {
 }})
 assert(rows[1].min == '+20' and rows[1].max == nil and rows[1].scale == '+1 per 2 levels')
 
--- No guessed level when class levels are missing: scaling falls back to
--- raw, fixed still formats.
+-- No class level: the level is not guessed, but the row shows the level 1 value and the rate (D058);
+-- a fixed slot still formats as before.
 rows = fx.rows({effects = {
   {effect = 4, base = 10, base2 = 0, max = 0, formula = 101},
   {effect = 2, base = 5, base2 = 0, max = 0, formula = 100},
 }})
-assert(rows[1].is_raw == true)
+assert(rows[1].name == 'Strength' and rows[1].min == '+10' and rows[1].min_level == nil)
+assert(rows[1].scale == '+1 per 2 levels' and not rows[1].is_raw)
+assert(fx.format(rows[1]) == 'Strength +10, +1 per 2 levels')
 assert(rows[2].min == '+5' and rows[2].is_raw == false)
+
+-- Steal Strength (spell 944): a proc spell with no class levels. base -15, +1 per 4 levels, cap 27, so the
+-- row reads -15 at level 1 up to -27 at level 48 instead of a raw SPA line (D058).
+rows = fx.rows({effects = {
+  {effect = 4, base = -15, base2 = 0, max = 27, formula = 109},
+}})
+assert(rows[1].name == 'Strength' and rows[1].min == '-15' and rows[1].min_level == nil)
+assert(rows[1].max == '-27' and rows[1].max_level == 48)
+assert(rows[1].note == '-1 per 4 levels' and not rows[1].is_raw)
+assert(fx.format(rows[1]) == 'Strength -15 to Strength -27 (level 48), -1 per 4 levels')
 
 -- Debuff, unsupported SPA/formula/skill and malformed fields stay raw.
 rows = fx.rows({class_level = {11}, effects = {
@@ -148,7 +160,8 @@ rows = fx.rows({class_level = {10}, effects = {
 }})
 assert(rows[1].name == 'Stamina' and rows[1].min == '+10' and not rows[1].is_raw)
 
--- A scaling rule-derived slot shows its value at the class level; without one it stays raw.
+-- A scaling rule-derived slot shows its value at the class level; without one it shows the level 1 value and the
+-- rate (D058).
 rows = fx.rows({class_level = {20}, effects = {
   {effect = 24, base = 10, base2 = 0, max = 0, formula = 101},
 }})
@@ -158,7 +171,8 @@ assert(fx.format(rows[1]) == 'Stamina +20 (level 20), +1 per 2 levels')
 rows = fx.rows({effects = {
   {effect = 24, base = 10, base2 = 0, max = 0, formula = 101},
 }})
-assert(rows[1].is_raw and rows[1].min:find('SPA 24', 1, true))
+assert(rows[1].name == 'Stamina' and rows[1].min == '+10' and rows[1].min_level == nil)
+assert(rows[1].scale == '+1 per 2 levels' and not rows[1].is_raw)
 
 -- An SPA with no name in the generated table stays raw.
 rows = fx.rows({class_level = {10}, effects = {
@@ -210,6 +224,22 @@ rows = fx.rows({class_level = {255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
 assert(rows[1].name == 'Damage Shield' and rows[1].min == '13' and rows[1].min_level == 28)
 assert(rows[1].max == '15' and rows[1].max_level == 36 and not rows[1].is_raw)
 assert(rows[2].name == 'Fire Resist' and rows[2].min == '+20' and not rows[2].is_raw)
+
+-- A damage shield is stored negative but shown as a positive amount, so its rate is positive too (D058).
+rows = fx.rows({effects = {
+  {effect = 59, base = -6, base2 = 0, max = 0, formula = 109},
+}})
+assert(rows[1].name == 'Damage Shield' and rows[1].min == '6' and rows[1].min_level == nil)
+assert(rows[1].scale == '+1 per 4 levels' and not rows[1].is_raw)
+rows = fx.rows({class_level = {28}, effects = {
+  {effect = 59, base = -6, base2 = 0, max = 0, formula = 109},
+}})
+assert(rows[1].min == '13' and rows[1].min_level == 28 and rows[1].scale == '+1 per 4 levels')
+rows = fx.rows({effects = {
+  {effect = 59, base = -6, base2 = 0, max = 15, formula = 109},
+}})
+assert(rows[1].min == '6' and rows[1].max == '15' and rows[1].max_level == 36)
+assert(rows[1].note == '+1 per 4 levels' and not rows[1].is_raw)
 
 -- Rune I: base is the amount absorbed, max the cap, formula 111 (+6 per level above 16).
 rows = fx.rows({class_level = {13}, effects = {

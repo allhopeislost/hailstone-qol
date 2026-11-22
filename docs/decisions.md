@@ -645,3 +645,35 @@ which is why it does not pull in the high-chance junk D030 rejected.
 Rules out: the flag-based named rule; a generic loot-chance threshold. Known limitation: 150 zones
 that had flagged named now have none, because their named have no guaranteed drop, and a few
 container objects with large loottables (for example `a_moldy_chest`) pass the rule.
+
+## D058 A scaling effect without a class level shows its level 1 value and rate
+Status: Accepted
+Recorded: 2026-11-22
+Supersedes: D048 (only the rule that a scaling slot without a class level stays raw)
+Decision: an effect slot whose formula scales with level, and whose spell has no class level (every `class_level`
+entry 255, as on item proc spells), is shown as a normal row instead of a raw SPA line. It shows the level 1 value
+(`|base| + change(formula, 1)`), the muted rate (`+1 per 4 levels`, or `scales with level` for AC as in D046) and,
+when the slot has a cap, the capped value with the level that reaches it (`-15 to -27 (L48)`). The cap's level is a
+property of the formula, so it needs no class level and nothing is guessed. With a cap the rate is carried in `note`
+(the UI draws `scale` and `note` in the same muted line) so the plain-text line keeps it; without a cap it stays in
+`scale`. A formula the client's `change` cannot express (tick based, random, HP based) and an SPA the client's table
+does not name still stay raw. A `plain` row (a damage shield stored negative, a cure counter shown as removed) shows
+the magnitude, so its rate follows the shown sign too (`Damage Shield 6, +1 per 4 levels`), with or without a class
+level.
+Why: Steal Strength (spell 944, an item proc) showed `Slot 1: STR (SPA 4, base -15, base2 0, max 27, formula 109)`
+on Dark Reaver (Legendary) next to otherwise readable effects; the row can describe the value and its growth without
+knowing the spell's own level.
+Rules out: guessing a class or caster level; a made-up minimum for a formula that starts above level 1; showing
+`base2`; changing a row for a spell that does have a class level.
+
+## D059 The Resist type header uses the client's resist name
+Status: Accepted
+Recorded: 2026-11-22
+Decision: the header of a detrimental spell shows `Resist type: <name>` with the client's own resist name
+(`spell_resist_type_desc` in spell_effect_text.cpp): `unresistable` (0), `magic`, `fire`, `cold`, `poison`,
+`disease`, `chromatic`, `prismatic`, `physical`, `corruption`. An id outside 0-9 keeps the number, because the
+client has no name for it. The names are lowercase, like the limit phrases and the proc damage summary, and
+`spell_effects.RESIST` stays the one table for both. Beneficial spells still show no resist line.
+Why: the Dark Reaver (Legendary) item window showed `Resist type: 1` next to readable effects; the client names the
+same field and the add-on already carried the table for proc summaries (`45 fire damage`).
+Rules out: guessing a name for an id the client does not name; a second resist table; a new option or file.
